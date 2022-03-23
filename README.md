@@ -10,7 +10,9 @@ $ cargo run
 
 ## Main Idea
 
-The Main Idea is being able to define transformation rules of symbolic algebraic expressions and sequentially applying them:
+The Main Idea is being able to define transformation rules of symbolic algebraic expressions and sequentially applying them.
+
+### Transforming the derivative of square function
 
 ```
 square_of_sum : (x + y)^2 = x^2 + 2*x*y + y^2;
