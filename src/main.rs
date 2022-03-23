@@ -120,43 +120,45 @@ fn pattern_match(pattern: &Expr, value: &Expr) -> Option<Bindings> {
     }
 }
 
+macro_rules! sym {
+    ($name:ident) => {
+        Expr::Sym(stringify!($name).to_string())
+    }
+}
+
+macro_rules! fun {
+    ($name:ident) => {
+        Expr::Fun(stringify!($name).to_string(), vec![])
+    };
+    ($name:ident,$($args:expr),*) => {
+        Expr::Fun(stringify!($name).to_string(), vec![$($args),*])
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     pub fn rule_apply_all() {
-        use Expr::*;
         // swap(pair(a, b)) = pair(b, a)
         let swap = Rule {
-            head: Fun("swap".to_string(),
-                      vec![Fun("pair".to_string(),
-                               vec![Sym("a".to_string()), Sym("b".to_string())])]),
-            body: Fun("pair".to_string(),
-                      vec![Sym("b".to_string()), Sym("a".to_string())]),
+            head: fun!(swap, fun!(pair, sym!(a), sym!(b))),
+            body: fun!(pair, sym!(b), sym!(a)),
         };
 
-        let input = Fun("foo".to_string(),
-                        vec![Fun("swap".to_string(),
-                                 vec![Fun("pair".to_string(),
-                                          vec![Fun("f".to_string(), vec![Sym("a".to_string())]),
-                                               Fun("g".to_string(), vec![Sym("b".to_string())])])]),
-                             Fun("swap".to_string(),
-                                 vec![Fun("pair".to_string(),
-                                          vec![Fun("q".to_string(), vec![Sym("c".to_string())]),
-                                               Fun("z".to_string(), vec![Sym("d".to_string())])])])]);
+        let input = fun!(foo,
+                         fun!(swap, fun!(pair, fun!(f, sym!(a)), fun!(g, sym!(b)))),
+                         fun!(swap, fun!(pair, fun!(q, sym!(c)), fun!(z, sym!(d)))));
 
-        let expected = Fun("foo".to_string(),
-                           vec![Fun("pair".to_string(),
-                                    vec![Fun("g".to_string(), vec![Sym("b".to_string())]),
-                                         Fun("f".to_string(), vec![Sym("a".to_string())])]),
-                                Fun("pair".to_string(),
-                                    vec![Fun("z".to_string(), vec![Sym("d".to_string())]),
-                                         Fun("q".to_string(), vec![Sym("c".to_string())])])]);
+        let expected = fun!(foo,
+                            fun!(pair, fun!(g, sym!(b)), fun!(f, sym!(a))),
+                            fun!(pair, fun!(z, sym!(d)), fun!(q, sym!(c))));
 
         assert_eq!(swap.apply_all(&input), expected);
     }
 }
 
 fn main() {
+    println!("{}", fun!(f, sym!(a)));
 }
