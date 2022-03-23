@@ -120,19 +120,35 @@ fn pattern_match(pattern: &Expr, value: &Expr) -> Option<Bindings> {
     }
 }
 
-macro_rules! sym {
-    ($name:ident) => {
-        Expr::Sym(stringify!($name).to_string())
+macro_rules! fun_args {
+    () => { vec![] };
+    ($name:ident) => { vec![expr!($name)] };
+    ($name:ident,$($rest:tt)*) => {
+        {
+            let mut t = vec![expr!($name)];
+            t.append(&mut fun_args!($($rest)*));
+            t
+        }
+    };
+    ($name:ident($($args:tt)*)) => {
+        vec![expr!($name($($args)*))]
+    };
+    ($name:ident($($args:tt)*),$($rest:tt)*) => {
+        {
+            let mut t = vec![expr!($name($($args)*))];
+            t.append(&mut fun_args!($($rest)*));
+            t
+        }
     }
 }
 
-macro_rules! fun {
+macro_rules! expr {
     ($name:ident) => {
-        Expr::Fun(stringify!($name).to_string(), vec![])
+        Expr::Sym(stringify!($name).to_string())
     };
-    ($name:ident,$($args:expr),*) => {
-        Expr::Fun(stringify!($name).to_string(), vec![$($args),*])
-    }
+    ($name:ident($($args:tt)*)) => {
+        Expr::Fun(stringify!($name).to_string(), fun_args!($($args)*))
+    };
 }
 
 #[cfg(test)]
@@ -143,22 +159,30 @@ mod tests {
     pub fn rule_apply_all() {
         // swap(pair(a, b)) = pair(b, a)
         let swap = Rule {
-            head: fun!(swap, fun!(pair, sym!(a), sym!(b))),
-            body: fun!(pair, sym!(b), sym!(a)),
+            head: expr!(swap(pair(a, b))),
+            body: expr!(pair(b, a)),
         };
 
-        let input = fun!(foo,
-                         fun!(swap, fun!(pair, fun!(f, sym!(a)), fun!(g, sym!(b)))),
-                         fun!(swap, fun!(pair, fun!(q, sym!(c)), fun!(z, sym!(d)))));
+        let input = expr! {
+            foo(swap(pair(f(a), g(b))),
+                swap(pair(q(c), z(d))))
+        };
 
-        let expected = fun!(foo,
-                            fun!(pair, fun!(g, sym!(b)), fun!(f, sym!(a))),
-                            fun!(pair, fun!(z, sym!(d)), fun!(q, sym!(c))));
+        let expected = expr! {
+            foo(pair(g(b), f(a)),
+                pair(z(d), q(c)))
+        };
 
         assert_eq!(swap.apply_all(&input), expected);
     }
 }
 
 fn main() {
-    println!("{}", fun!(f, sym!(a)));
+    println!("{}", expr!(a));
+    println!("{}", expr!(f()));
+    println!("{}", expr!(f(a)));
+    println!("{}", expr!(f(a, b)));
+    println!("{}", expr!(f(a, b, c)));
+    println!("{}", expr!(f(g(a), k(b))));
+    println!("{}", expr!(f(g(), k(b))));
 }
