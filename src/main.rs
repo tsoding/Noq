@@ -275,29 +275,25 @@ impl<Chars: Iterator<Item=char>> Iterator for Lexer<Chars> {
 
         while let Some(_) = self.chars.next_if(|x| x.is_whitespace()) {}
 
-        if let Some(x) = self.chars.next() {
-            let mut text = String::new();
-            text.push(x);
-            match x {
-                '(' => Some(Token {kind: TokenKind::OpenParen, text}),
-                ')' => Some(Token {kind: TokenKind::CloseParen, text}),
-                ',' => Some(Token {kind: TokenKind::Comma, text}),
-                '=' => Some(Token {kind: TokenKind::Equals, text}),
-                _ => {
-                    if !x.is_alphanumeric() {
-                        self.invalid = true;
-                        Some(Token{kind: TokenKind::Invalid, text})
-                    } else {
-                        while let Some(x) = self.chars.next_if(|x| x.is_alphanumeric()) {
-                            text.push(x)
-                        }
-
-                        Some(Token{kind: TokenKind::Sym, text})
+        let x = self.chars.next()?;
+        let mut text = x.to_string();
+        match x {
+            '(' => Some(Token {kind: TokenKind::OpenParen, text}),
+            ')' => Some(Token {kind: TokenKind::CloseParen, text}),
+            ',' => Some(Token {kind: TokenKind::Comma, text}),
+            '=' => Some(Token {kind: TokenKind::Equals, text}),
+            _ => {
+                if !x.is_alphanumeric() {
+                    self.invalid = true;
+                    Some(Token{kind: TokenKind::Invalid, text})
+                } else {
+                    while let Some(x) = self.chars.next_if(|x| x.is_alphanumeric()) {
+                        text.push(x)
                     }
+
+                    Some(Token{kind: TokenKind::Sym, text})
                 }
             }
-        } else {
-            None
         }
     }
 }
