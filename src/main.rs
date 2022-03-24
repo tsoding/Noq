@@ -4,6 +4,13 @@ use std::iter::Peekable;
 use std::io::{stdin, stdout};
 use std::io::Write;
 
+#[derive(Debug, Clone)]
+struct Loc {
+    file_path: Option<String>,
+    row: usize,
+    col: usize,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 enum Expr {
     Sym(String),
@@ -254,16 +261,36 @@ impl fmt::Display for TokenKind {
 struct Token {
     kind: TokenKind,
     text: String,
+    loc: Loc,
 }
 
 struct Lexer<Chars: Iterator<Item=char>> {
     chars: Peekable<Chars>,
-    invalid: bool
+    invalid: bool,
+    file_path: Option<String>,
+    lnum: usize,
+    bol: usize,
+    cnum: usize,
 }
 
 impl<Chars: Iterator<Item=char>> Lexer<Chars> {
     fn from_iter(chars: Chars) -> Self {
-        Self {chars: chars.peekable(), invalid: false}
+        Self {
+            chars: chars.peekable(),
+            invalid: false,
+            file_path: None,
+            lnum: 0,
+            bol: 0,
+            cnum: 0,
+        }
+    }
+
+    fn loc(&self) -> Loc {
+        Loc {
+            file_path: self.file_path.clone(),
+            row: self.lnum,
+            col: self.cnum - self.bol,
+        }
     }
 }
 
@@ -273,25 +300,34 @@ impl<Chars: Iterator<Item=char>> Iterator for Lexer<Chars> {
     fn next(&mut self) -> Option<Token> {
         if self.invalid { return None }
 
-        while let Some(_) = self.chars.next_if(|x| x.is_whitespace()) {}
+        while let Some(x) = self.chars.next_if(|x| x.is_whitespace()) {
+            self.cnum += 1;
+            if x == '\n' {
+                self.lnum += 1;
+                self.bol = self.cnum;
+            }
+        }
 
+        let loc = self.loc();
         let x = self.chars.next()?;
+        self.cnum += 1;
         let mut text = x.to_string();
         match x {
-            '(' => Some(Token {kind: TokenKind::OpenParen, text}),
-            ')' => Some(Token {kind: TokenKind::CloseParen, text}),
-            ',' => Some(Token {kind: TokenKind::Comma, text}),
-            '=' => Some(Token {kind: TokenKind::Equals, text}),
+            '(' => Some(Token {kind: TokenKind::OpenParen, text, loc}),
+            ')' => Some(Token {kind: TokenKind::CloseParen, text, loc}),
+            ',' => Some(Token {kind: TokenKind::Comma, text, loc}),
+            '=' => Some(Token {kind: TokenKind::Equals, text, loc}),
             _ => {
                 if !x.is_alphanumeric() {
                     self.invalid = true;
-                    Some(Token{kind: TokenKind::Invalid, text})
+                    Some(Token{kind: TokenKind::Invalid, text, loc})
                 } else {
                     while let Some(x) = self.chars.next_if(|x| x.is_alphanumeric()) {
+                        self.cnum += 1;
                         text.push(x)
                     }
 
-                    Some(Token{kind: TokenKind::Sym, text})
+                    Some(Token{kind: TokenKind::Sym, text, loc})
                 }
             }
         }
@@ -305,15 +341,23 @@ fn main() {
     };
     let mut command = String::new();
 
+    let prompt = "> ";
+
     loop {
         command.clear();
-        print!("> ");
+        print!("{}", prompt);
         stdout().flush().unwrap();
         stdin().read_line(&mut command).unwrap();
         match Expr::parse(&mut Lexer::from_iter(command.chars())) {
             Ok(expr) => println!("{}", swap.apply_all(&expr)),
-            Err(Error::UnexpectedToken(expected, actual)) => println!("ERROR: expected {} but got {} '{}'", expected, actual.kind, actual.text),
-            Err(Error::UnexpectedEOF(expected)) => println!("ERROR: expected {} but got nothing", expected),
+            Err(Error::UnexpectedToken(expected, actual)) => {
+                println!("{:>width$}^", "", width=prompt.len() + actual.loc.col);
+                println!("ERROR: expected {} but got {} '{}'", expected, actual.kind, actual.text)
+            }
+            Err(Error::UnexpectedEOF(expected)) => {
+                println!("{:>width$}^", "", width=prompt.len() + command.len());
+                println!("ERROR: expected {} but got nothing", expected)
+            }
         }
     }
 }
