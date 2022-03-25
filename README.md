@@ -29,7 +29,7 @@ rule div_distrib   (a + b) / c = a / c + b / c
 rule square_of_sum (x + y)^2 = x^2 + 2*x*y + y^2;
 rule der_def       der(f) = lim(dx, 0, (f(x + dx) - f(x)) / dx);
 
-shape der(square)
+shape der(square)                  // der(square)
   apply all der_def                // lim(dx, 0, (square(x + dx) - square(x)) / dx)
   apply all square_def             // lim(dx, 0, ((x + dx)^2 - x^2) / dx)
   apply all square_of_sum          // lim(dx, 0, ((x^2 + 2*x*dx + dx^2) - x^2) / dx)
