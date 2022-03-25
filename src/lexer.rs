@@ -57,7 +57,7 @@ impl fmt::Display for TokenKind {
             Rule => write!(f, "rule keyword"),
             Shape => write!(f, "shape keyword"),
             Apply => write!(f, "apply keyword"),
-            Done => write!(f, "apply keyword"),
+            Done => write!(f, "done keyword"),
             OpenParen => write!(f, "open paren"),
             CloseParen => write!(f, "close paren"),
             Comma => write!(f, "comma"),
