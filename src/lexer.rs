@@ -20,13 +20,33 @@ impl fmt::Display for Loc {
 #[derive(Debug, PartialEq, Clone, Copy, Eq, Hash)]
 pub enum TokenKind {
     Sym,
+
+    // Keywords
+    Rule,
+    Shape,
+    Apply,
+    Done,
+
+    // Special Characters
     OpenParen,
     CloseParen,
     Comma,
     Equals,
     Colon,
+
+    // Terminators
     Invalid,
     End,
+}
+
+fn keyword_by_name(text: &str) -> Option<TokenKind> {
+    match text {
+        "rule" => Some(TokenKind::Rule),
+        "shape" => Some(TokenKind::Shape),
+        "apply" => Some(TokenKind::Apply),
+        "done" => Some(TokenKind::Done),
+        _ => None,
+    }
 }
 
 impl fmt::Display for TokenKind {
@@ -34,6 +54,10 @@ impl fmt::Display for TokenKind {
         use TokenKind::*;
         match self {
             Sym => write!(f, "symbol"),
+            Rule => write!(f, "rule keyword"),
+            Shape => write!(f, "shape keyword"),
+            Apply => write!(f, "apply keyword"),
+            Done => write!(f, "apply keyword"),
             OpenParen => write!(f, "open paren"),
             CloseParen => write!(f, "close paren"),
             Comma => write!(f, "comma"),
@@ -121,7 +145,11 @@ impl<Chars: Iterator<Item=char>> Iterator for Lexer<Chars> {
                                 text.push(x)
                             }
 
-                            Some(Token{kind: TokenKind::Sym, text, loc})
+                            if let Some(kind) = keyword_by_name(&text) {
+                                Some(Token{kind, text, loc})
+                            } else {
+                                Some(Token{kind: TokenKind::Sym, text, loc})
+                            }
                         }
                     }
                 }

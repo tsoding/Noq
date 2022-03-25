@@ -1,2 +1,2 @@
-swap : swap(tuple(a, b)) = tuple(a, b)
-rot  : rot(tuple(a, b, c)) = tuple(c, a, b)
+rule swap swap(tuple(a, b)) = tuple(a, b)
+rule rot  rot(tuple(a, b, c)) = tuple(c, a, b)
