@@ -14,6 +14,8 @@ The Main Idea is being able to define transformation rules of symbolic algebraic
 
 ### Transforming the derivative of square function
 
+*(WARNING! This is not a working example yet!)*
+
 ```
 rule square_def    square(x) = x^2;
 rule parens        (a) - b = a - b
