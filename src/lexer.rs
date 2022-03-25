@@ -26,6 +26,7 @@ pub enum TokenKind {
     Equals,
     Colon,
     Invalid,
+    End,
 }
 
 impl fmt::Display for TokenKind {
@@ -39,6 +40,7 @@ impl fmt::Display for TokenKind {
             Equals => write!(f, "equals"),
             Colon => write!(f, "colon"),
             Invalid => write!(f, "invalid token"),
+            End => write!(f, "end of input"),
         }
     }
 }
@@ -52,7 +54,7 @@ pub struct Token {
 
 pub struct Lexer<Chars: Iterator<Item=char>> {
     chars: Peekable<Chars>,
-    invalid: bool,
+    exhausted: bool,
     file_path: Option<String>,
     lnum: usize,
     bol: usize,
@@ -63,7 +65,7 @@ impl<Chars: Iterator<Item=char>> Lexer<Chars> {
     pub fn from_iter(chars: Chars) -> Self {
         Self {
             chars: chars.peekable(),
-            invalid: false,
+            exhausted: false,
             file_path: None,
             lnum: 0,
             bol: 0,
@@ -88,7 +90,7 @@ impl<Chars: Iterator<Item=char>> Iterator for Lexer<Chars> {
     type Item = Token;
 
     fn next(&mut self) -> Option<Token> {
-        if self.invalid { return None }
+        if self.exhausted { return None }
 
         while let Some(x) = self.chars.next_if(|x| x.is_whitespace()) {
             self.cnum += 1;
@@ -99,27 +101,35 @@ impl<Chars: Iterator<Item=char>> Iterator for Lexer<Chars> {
         }
 
         let loc = self.loc();
-        let x = self.chars.next()?;
-        self.cnum += 1;
-        let mut text = x.to_string();
-        match x {
-            '(' => Some(Token {kind: TokenKind::OpenParen, text, loc}),
-            ')' => Some(Token {kind: TokenKind::CloseParen, text, loc}),
-            ',' => Some(Token {kind: TokenKind::Comma, text, loc}),
-            '=' => Some(Token {kind: TokenKind::Equals, text, loc}),
-            ':' => Some(Token {kind: TokenKind::Colon, text, loc}),
-            _ => {
-                if !x.is_alphanumeric() {
-                    self.invalid = true;
-                    Some(Token{kind: TokenKind::Invalid, text, loc})
-                } else {
-                    while let Some(x) = self.chars.next_if(|x| x.is_alphanumeric()) {
-                        self.cnum += 1;
-                        text.push(x)
-                    }
+        match self.chars.next() {
+            Some(x) => {
+                self.cnum += 1;
+                let mut text = x.to_string();
+                match x {
+                    '(' => Some(Token {kind: TokenKind::OpenParen,  text, loc}),
+                    ')' => Some(Token {kind: TokenKind::CloseParen, text, loc}),
+                    ',' => Some(Token {kind: TokenKind::Comma,      text, loc}),
+                    '=' => Some(Token {kind: TokenKind::Equals,     text, loc}),
+                    ':' => Some(Token {kind: TokenKind::Colon,      text, loc}),
+                    _ => {
+                        if !x.is_alphanumeric() {
+                            self.exhausted = true;
+                            Some(Token{kind: TokenKind::Invalid, text, loc})
+                        } else {
+                            while let Some(x) = self.chars.next_if(|x| x.is_alphanumeric()) {
+                                self.cnum += 1;
+                                text.push(x)
+                            }
 
-                    Some(Token{kind: TokenKind::Sym, text, loc})
+                            Some(Token{kind: TokenKind::Sym, text, loc})
+                        }
+                    }
                 }
+            }
+
+            None => {
+                self.exhausted = true;
+                Some(Token{kind: TokenKind::End, text: "".to_string(), loc})
             }
         }
     }
