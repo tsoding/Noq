@@ -254,7 +254,11 @@ mod tests {
 fn parse_rules_from_file(file_path: &str) -> Result<HashMap<String, Rule>, Error> {
     let mut rules = HashMap::new();
     let source = fs::read_to_string(file_path).map_err(|e| Error::IoError(e))?;
-    let mut lexer = Lexer::from_iter(source.chars()).peekable();
+    let mut lexer = {
+        let mut lexer = Lexer::from_iter(source.chars());
+        lexer.set_file_path(file_path);
+        lexer.peekable()
+    };
 
     while let Some(_) = lexer.peek() {
         let name = expect_token_kind(&mut lexer, TokenKind::Sym)?;
@@ -273,8 +277,17 @@ fn main() {
             println!("INFO: successfully loaded rules from {}", default_rules_path);
             rules
         }
-        Err(err) => {
+        Err(Error::IoError(err)) => {
             eprintln!("ERROR: could not read file {}: {:?}", default_rules_path, err);
+            Default::default()
+        }
+        Err(Error::UnexpectedToken(expected, actual)) => {
+            eprintln!("{}: ERROR: expected {} but got {} '{}'",
+                      actual.loc, expected, actual.kind, actual.text);
+            Default::default()
+        }
+        Err(Error::UnexpectedEOF(expected)) => {
+            eprintln!("ERROR: expected {} but got nothing", expected);
             Default::default()
         }
     };

@@ -8,6 +8,15 @@ pub struct Loc {
     pub col: usize,
 }
 
+impl fmt::Display for Loc {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match &self.file_path {
+            Some(file_path) => write!(f, "{}:{}:{}", file_path, self.row, self.col),
+            None => write!(f, "{}:{}", self.row, self.col),
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Clone, Copy, Eq, Hash)]
 pub enum TokenKind {
     Sym,
@@ -68,6 +77,10 @@ impl<Chars: Iterator<Item=char>> Lexer<Chars> {
             row: self.lnum,
             col: self.cnum - self.bol,
         }
+    }
+
+    pub fn set_file_path(&mut self, file_path: &str) {
+        self.file_path = Some(file_path.to_string())
     }
 }
 
