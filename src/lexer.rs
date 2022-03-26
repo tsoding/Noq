@@ -64,12 +64,12 @@ impl TokenKindSet {
 
     pub const fn set(self, kind: TokenKind) -> Self {
         let TokenKindSet(set) = self;
-        TokenKindSet(set | (1 << kind as u64))
+        TokenKindSet(set | (1 << kind as TokenKindSetInnerType))
     }
 
     pub const fn unset(self, kind: TokenKind) -> Self {
         let TokenKindSet(set) = self;
-        TokenKindSet(set & !(1 << kind as u64))
+        TokenKindSet(set & !(1 << kind as TokenKindSetInnerType))
     }
 
     pub fn contains(&self, kind: TokenKind) -> bool {
@@ -96,7 +96,7 @@ impl fmt::Display for TokenKindSet {
 }
 
 #[allow(dead_code)]
-const TOKEN_KIND_SIZE_ASSERT: [(); (TOKEN_KIND_ITEMS.len() < std::mem::size_of::<TokenKindSetInnerType>() * 8) as usize] = [()];
+const TOKEN_KIND_SIZE_ASSERT: [(); (TOKEN_KIND_ITEMS.len() < TokenKindSetInnerType::BITS as usize) as usize] = [()];
 
 fn keyword_by_name(text: &str) -> Option<TokenKind> {
     match text {
@@ -113,10 +113,10 @@ impl fmt::Display for TokenKind {
         use TokenKind::*;
         match self {
             Sym => write!(f, "symbol"),
-            Rule => write!(f, "rule keyword"),
-            Shape => write!(f, "shape keyword"),
-            Apply => write!(f, "apply keyword"),
-            Done => write!(f, "done keyword"),
+            Rule => write!(f, "`rule`"),
+            Shape => write!(f, "`shape`"),
+            Apply => write!(f, "`apply`"),
+            Done => write!(f, "`done`"),
             OpenParen => write!(f, "open paren"),
             CloseParen => write!(f, "close paren"),
             Comma => write!(f, "comma"),
@@ -215,6 +215,7 @@ impl<Chars: Iterator<Item=char>> Iterator for Lexer<Chars> {
             }
 
             None => {
+                self.cnum += 1;
                 self.exhausted = true;
                 Some(Token{kind: TokenKind::End, text: "".to_string(), loc})
             }
