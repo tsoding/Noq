@@ -67,11 +67,6 @@ impl TokenKindSet {
         TokenKindSet(set | (1 << kind as TokenKindSetInnerType))
     }
 
-    pub const fn unset(self, kind: TokenKind) -> Self {
-        let TokenKindSet(set) = self;
-        TokenKindSet(set & !(1 << kind as TokenKindSetInnerType))
-    }
-
     pub fn contains(&self, kind: TokenKind) -> bool {
         let TokenKindSet(set) = self;
         (set & (1 << kind as u64)) > 0
