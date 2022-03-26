@@ -254,7 +254,6 @@ impl Context {
             .set(TokenKind::Quit);
         let keyword = expect_token_kind(lexer, expected_tokens)?;
         // todo!("Ability to undo the rule application");
-        // todo!("Quitting with a keyword");
         match keyword.kind {
             TokenKind::Rule => {
                 let name = expect_token_kind(lexer, TokenKindSet::single(TokenKind::Sym))?;
