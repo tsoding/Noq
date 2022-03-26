@@ -370,11 +370,17 @@ fn main() {
     } else {
         let mut command = String::new();
 
-        let prompt = "> ";
+        let default_prompt = "noq> ";
+        let shaping_prompt = "> ";
+        let mut prompt: &str;
 
         loop {
             command.clear();
-            // todo!("Visual prompt distinction when in shaping mode")
+            if let Some(_) = &context.current_expr {
+                prompt = shaping_prompt;
+            } else {
+                prompt = default_prompt;
+            }
             print!("{}", prompt);
             stdout().flush().unwrap();
             stdin().read_line(&mut command).unwrap();
