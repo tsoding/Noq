@@ -159,8 +159,8 @@ impl<Chars: Iterator<Item=char>> Lexer<Chars> {
     fn loc(&self) -> Loc {
         Loc {
             file_path: self.file_path.clone(),
-            row: self.lnum,
-            col: self.cnum - self.bol,
+            row: self.lnum + 1,
+            col: self.cnum - self.bol + 1,
         }
     }
 
@@ -173,6 +173,7 @@ impl<Chars: Iterator<Item=char>> Iterator for Lexer<Chars> {
     type Item = Token;
 
     fn next(&mut self) -> Option<Token> {
+        // todo!("Make Lexer handle comments");
         if self.exhausted { return None }
 
         while let Some(x) = self.chars.next_if(|x| x.is_whitespace()) {

@@ -1,2 +1,7 @@
-rule swap swap(tuple(a, b)) = tuple(a, b)
-rule rot  rot(tuple(a, b, c)) = tuple(c, a, b)
+rule swap swap(pair(a, b))   = pair(b, a)
+rule rot rot(triple(a, b, c)) = triple(c, a, b)
+shape swap(pair(f(a), g(b)))
+  apply swap
+  apply rule pair(a, b) = rot(triple(a, b, c))
+  apply rot
+done
