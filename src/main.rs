@@ -373,7 +373,7 @@ fn main() {
             print!("{}", prompt);
             stdout().flush().unwrap();
             stdin().read_line(&mut command).unwrap();
-            let mut lexer = Lexer::from_iter(command.chars()).peekable();
+            let mut lexer = Lexer::from_iter(command.trim().chars()).peekable();
             let result = context.process_command(&mut lexer)
                 .and_then(|()| expect_token_kind(&mut lexer, TokenKindSet::single(TokenKind::End)));
             match result {
