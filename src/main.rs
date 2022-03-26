@@ -251,6 +251,8 @@ impl Context {
             .set(TokenKind::Apply)
             .set(TokenKind::Done);
         let keyword = expect_token_kind(lexer, expected_tokens)?;
+        // todo!("Ability to undo the rule application");
+        // todo!("Quitting with a keyword");
         match keyword.kind {
             TokenKind::Rule => {
                 let name = expect_token_kind(lexer, TokenKindSet::single(TokenKind::Sym))?;
@@ -367,6 +369,7 @@ fn main() {
 
         loop {
             command.clear();
+            // todo!("Visual prompt distinction when in shaping mode")
             print!("{}", prompt);
             stdout().flush().unwrap();
             stdin().read_line(&mut command).unwrap();
