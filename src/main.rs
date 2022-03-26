@@ -325,6 +325,11 @@ impl Context {
     }
 }
 
+fn eprint_repl_loc_cursor(prompt: &str, loc: &Loc) {
+    assert!(loc.row == 1);
+    eprintln!("{:>width$}^", "", width=prompt.len() + loc.col - 1);
+}
+
 fn main() {
     let mut args = env::args();
     args.next(); // skip program
@@ -378,24 +383,24 @@ fn main() {
                 .and_then(|()| expect_token_kind(&mut lexer, TokenKindSet::single(TokenKind::End)));
             match result {
                 Err(Error::UnexpectedToken(expected, actual)) => {
-                    eprintln!("{:>width$}^", "", width=prompt.len() + actual.loc.col - 1);
+                    eprint_repl_loc_cursor(prompt, &actual.loc);
                     eprintln!("ERROR: expected {} but got {} '{}'", expected, actual.kind, actual.text);
                 }
                 Err(Error::RuleAlreadyExists(name, new_loc, _old_loc)) => {
-                    eprintln!("{:>width$}^", "", width=prompt.len() + new_loc.col - 1);
+                    eprint_repl_loc_cursor(prompt, &new_loc);
                     eprintln!("ERROR: redefinition of existing rule {}", name);
                 }
                 Err(Error::AlreadyShaping(loc)) => {
-                    eprintln!("{:>width$}^", "", width=prompt.len() + loc.col - 1);
+                    eprint_repl_loc_cursor(prompt, &loc);
                     eprintln!("ERROR: already shaping an expression. Finish the current shaping with {} first.",
                               TokenKind::Done);
                 }
                 Err(Error::NoShapingInPlace(loc)) => {
-                    eprintln!("{:>width$}^", "", width=prompt.len() + loc.col - 1);
+                    eprint_repl_loc_cursor(prompt, &loc);
                     eprintln!("ERROR: no shaping in place.");
                 }
                 Err(Error::RuleDoesNotExist(name, loc)) => {
-                    eprintln!("{:>width$}^", "", width=prompt.len() + loc.col - 1);
+                    eprint_repl_loc_cursor(prompt, &loc);
                     eprintln!("ERROR: rule {} does not exist", name);
                 }
                 Ok(_) => {}
