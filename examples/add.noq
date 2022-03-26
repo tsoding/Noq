@@ -1,0 +1,8 @@
+rule add0 add(0, a) = a
+rule add add(s(a), b) = s(add(a, b))
+
+shape add(s(s(0)), s(s(s(0))))
+  apply add
+  apply add
+  apply add0
+done

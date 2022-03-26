@@ -5,7 +5,7 @@ Not [Coq](https://coq.inria.fr/). Simple expression transformer that is not Coq.
 ## Quick Start
 
 ```console
-$ cargo run ./rules.noq
+$ cargo run ./examples/add.noq
 ```
 
 ## Main Idea
@@ -14,7 +14,7 @@ The Main Idea is being able to define transformation rules of symbolic algebraic
 
 ### Transforming the derivative of square function
 
-*(WARNING! This is not a working example yet! An actually working simpler example can be found in [./rules.noq](./rules.noq))*
+*(WARNING! This is not a working example yet! An actually working simpler example can be found in [./examples/add.noq](./examples/add.noq))*
 
 ```
 rule square_def    square(x) = x^2;
