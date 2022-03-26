@@ -24,7 +24,7 @@ enum Error {
 }
 
 impl Expr {
-    fn parse_peekable(lexer: &mut Peekable<impl Iterator<Item=Token>>) -> Result<Self, Error> {
+    fn parse(lexer: &mut Peekable<impl Iterator<Item=Token>>) -> Result<Self, Error> {
         use TokenKind::*;
         let name = lexer.next().expect("Completely exhausted lexer");
         match name.kind {
@@ -34,9 +34,9 @@ impl Expr {
                     if let Some(_) = lexer.next_if(|t| t.kind == CloseParen) {
                         return Ok(Expr::Fun(name.text, args))
                     }
-                    args.push(Self::parse_peekable(lexer)?);
+                    args.push(Self::parse(lexer)?);
                     while let Some(_) = lexer.next_if(|t| t.kind == Comma) {
-                        args.push(Self::parse_peekable(lexer)?);
+                        args.push(Self::parse(lexer)?);
                     }
                     let close_paren = lexer.next().expect("Completely exhausted lexer");
                     if close_paren.kind == CloseParen {
@@ -50,10 +50,6 @@ impl Expr {
             },
             _ => Err(Error::UnexpectedToken(TokenKindSet::single(Sym), name))
         }
-    }
-
-    fn parse(lexer: &mut impl Iterator<Item=Token>) -> Result<Self, Error> {
-        Self::parse_peekable(&mut lexer.peekable())
     }
 }
 
@@ -259,9 +255,9 @@ impl Context {
                 if let Some(existing_rule) = self.rules.get(&name.text) {
                     return Err(Error::RuleAlreadyExists(name.text, name.loc, existing_rule.loc.clone()))
                 }
-                let head = Expr::parse_peekable(lexer)?;
+                let head = Expr::parse(lexer)?;
                 expect_token_kind(lexer, TokenKindSet::single(TokenKind::Equals))?;
-                let body = Expr::parse_peekable(lexer)?;
+                let body = Expr::parse(lexer)?;
                 let rule = Rule {
                     loc: keyword.loc,
                     head,
@@ -275,7 +271,7 @@ impl Context {
                     return Err(Error::AlreadyShaping)
                 }
 
-                let expr = Expr::parse_peekable(lexer)?;
+                let expr = Expr::parse(lexer)?;
                 println!("Shaping {}", &expr);
                 self.current_expr = Some(expr);
             },
