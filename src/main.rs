@@ -378,24 +378,24 @@ fn main() {
                 .and_then(|()| expect_token_kind(&mut lexer, TokenKindSet::single(TokenKind::End)));
             match result {
                 Err(Error::UnexpectedToken(expected, actual)) => {
-                    eprintln!("{:>width$}^", "", width=prompt.len() + actual.loc.col);
+                    eprintln!("{:>width$}^", "", width=prompt.len() + actual.loc.col - 1);
                     eprintln!("ERROR: expected {} but got {} '{}'", expected, actual.kind, actual.text);
                 }
                 Err(Error::RuleAlreadyExists(name, new_loc, _old_loc)) => {
-                    eprintln!("{:>width$}^", "", width=prompt.len() + new_loc.col);
+                    eprintln!("{:>width$}^", "", width=prompt.len() + new_loc.col - 1);
                     eprintln!("ERROR: redefinition of existing rule {}", name);
                 }
                 Err(Error::AlreadyShaping(loc)) => {
-                    eprintln!("{:>width$}^", "", width=prompt.len() + loc.col);
+                    eprintln!("{:>width$}^", "", width=prompt.len() + loc.col - 1);
                     eprintln!("ERROR: already shaping an expression. Finish the current shaping with {} first.",
                               TokenKind::Done);
                 }
                 Err(Error::NoShapingInPlace(loc)) => {
-                    eprintln!("{:>width$}^", "", width=prompt.len() + loc.col);
+                    eprintln!("{:>width$}^", "", width=prompt.len() + loc.col - 1);
                     eprintln!("ERROR: no shaping in place.");
                 }
                 Err(Error::RuleDoesNotExist(name, loc)) => {
-                    eprintln!("{:>width$}^", "", width=prompt.len() + loc.col);
+                    eprintln!("{:>width$}^", "", width=prompt.len() + loc.col - 1);
                     eprintln!("ERROR: rule {} does not exist", name);
                 }
                 Ok(_) => {}
