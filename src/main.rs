@@ -13,7 +13,8 @@ use lexer::*;
 #[derive(Debug, Clone, PartialEq)]
 enum Expr {
     Sym(String),
-    Fun(String, Vec<Expr>)
+    Var(String),
+    Fun(Box<Expr>, Vec<Expr>),
 }
 
 #[derive(Debug)]
@@ -26,6 +27,14 @@ enum Error {
 }
 
 impl Expr {
+    fn var_or_sym_from_name(name: &str) -> Expr {
+        if name.chars().next().expect("Empty names are not allowed").is_uppercase() {
+            Expr::Var(name.to_string())
+        } else {
+            Expr::Sym(name.to_string())
+        }
+    }
+
     fn parse(lexer: &mut Peekable<impl Iterator<Item=Token>>) -> Result<Self, Error> {
         use TokenKind::*;
         let name = lexer.next().expect("Completely exhausted lexer");
@@ -34,7 +43,7 @@ impl Expr {
                 if let Some(_) = lexer.next_if(|t| t.kind == OpenParen) {
                     let mut args = Vec::new();
                     if let Some(_) = lexer.next_if(|t| t.kind == CloseParen) {
-                        return Ok(Expr::Fun(name.text, args))
+                        return Ok(Expr::Fun(Box::new(Self::var_or_sym_from_name(&name.text)), args))
                     }
                     args.push(Self::parse(lexer)?);
                     while let Some(_) = lexer.next_if(|t| t.kind == Comma) {
@@ -42,12 +51,12 @@ impl Expr {
                     }
                     let close_paren = lexer.next().expect("Completely exhausted lexer");
                     if close_paren.kind == CloseParen {
-                        Ok(Expr::Fun(name.text, args))
+                        Ok(Expr::Fun(Box::new(Self::var_or_sym_from_name(&name.text)), args))
                     } else {
                         Err(Error::UnexpectedToken(TokenKindSet::single(CloseParen), close_paren))
                     }
                 } else {
-                    Ok(Expr::Sym(name.text))
+                    Ok(Self::var_or_sym_from_name(&name.text))
                 }
             },
             _ => Err(Error::UnexpectedToken(TokenKindSet::single(Sym), name))
@@ -58,7 +67,7 @@ impl Expr {
 impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Expr::Sym(name) => write!(f, "{}", name),
+            Expr::Sym(name) | Expr::Var(name) => write!(f, "{}", name),
             Expr::Fun(name, args) => {
                 write!(f, "{}(", name)?;
                 for (i, arg) in args.iter().enumerate() {
@@ -81,7 +90,9 @@ struct Rule {
 fn substitute_bindings(bindings: &Bindings, expr: &Expr) -> Expr {
     use Expr::*;
     match expr {
-        Sym(name) => {
+        Sym(_) => expr.clone(),
+
+        Var(name) => {
             if let Some(value) = bindings.get(name) {
                 value.clone()
             } else {
@@ -89,17 +100,13 @@ fn substitute_bindings(bindings: &Bindings, expr: &Expr) -> Expr {
             }
         },
 
-        Fun(name, args) => {
-            let new_name = match bindings.get(name) {
-                Some(Sym(new_name)) => new_name.clone(),
-                None => name.clone(),
-                Some(_) => todo!("Report expected symbol in the place of the functor name"),
-            };
+        Fun(head, args) => {
+            let new_head = substitute_bindings(bindings, head);
             let mut new_args = Vec::new();
             for arg in args {
                 new_args.push(substitute_bindings(bindings, &arg))
             }
-            Fun(new_name, new_args)
+            Fun(Box::new(new_head), new_args)
         }
     }
 }
@@ -120,13 +127,14 @@ impl Rule {
         } else {
             use Expr::*;
             match expr {
-                Sym(_) => expr.clone(),
-                Fun(name, args) => {
+                Sym(_) | Var(_) => expr.clone(),
+                Fun(head, args) => {
+                    let new_head = self.apply_all(head);
                     let mut new_args = Vec::new();
                     for arg in args {
                         new_args.push(self.apply_all(arg))
                     }
-                    Fun(name.clone(), new_args)
+                    Fun(Box::new(new_head), new_args)
                 }
             }
         }
@@ -145,7 +153,10 @@ fn pattern_match(pattern: &Expr, value: &Expr) -> Option<Bindings> {
     fn pattern_match_impl(pattern: &Expr, value: &Expr, bindings: &mut Bindings) -> bool {
         use Expr::*;
         match (pattern, value) {
-            (Sym(name), _) => {
+            (Sym(name1), Sym(name2)) => {
+                name1 == name2
+            }
+            (Var(name), _) => {
                 if let Some(bound_value) = bindings.get(name) {
                     bound_value == value
                 } else {

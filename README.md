@@ -17,9 +17,10 @@ The Main Idea is being able to define transformation rules of symbolic algebraic
 Current expression syntax:
 
 ```
-<expression> ::= <symbol> | <functor>
-<symbol> ::= [a-zA-Z0-9]+
-<functor> ::= <symbol> ( [<expression>],* )
+<expression> ::= <symbol> | <functor> | <var>
+<var> ::= [A-Z][a-zA-Z0-9]*
+<symbol> ::= [a-z0-9][a-zA-Z0-9]*
+<functor> ::= <expression> ( [<expression>],* )
 ```
 
 ## Rules and Shapes
@@ -33,7 +34,7 @@ rule <name:symbol> <head:expression> = <body:expression>
 Here is an example of a rule that swaps elements of a pair:
 
 ```
-rule swap swap(pair(a, b)) = pair(b, a)
+rule swap swap(pair(A, B)) = pair(B, A)
 ```
 
 Shaping is a process of sequential applying of rules to an expression transforming it into a different expression. Shaping has the following syntax:
@@ -60,7 +61,7 @@ You don't have to define a rule to use it in shaping. You can directly describe 
 
 ```
 shape swap(pair(f(a), g(b)))
-  apply rule swap(pair(a, b)) = pair(b, a)
+  apply rule swap(pair(A, B)) = pair(B, A)
 done
 ```
 

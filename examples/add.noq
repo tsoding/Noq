@@ -1,7 +1,7 @@
 # Adding two Peano numbers
 
-rule add0 add(0, a) = a               # base
-rule add add(s(a), b) = s(add(a, b))  # recursion
+rule add0 add(0, A) = A               # base
+rule add add(s(A), B) = s(add(A, B))  # recursion
 
 shape add(s(s(0)), s(s(s(0)))) # 2 + 3
   # TODO: it would be nice to have a "strategy" that applies a particular rule

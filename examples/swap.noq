@@ -1,8 +1,8 @@
-rule swap swap(pair(a, b))    = pair(b, a)
-rule rot rot(triple(a, b, c)) = triple(c, a, b)
+rule swap swap(pair(A, B))    = pair(B, A)
+rule rot rot(triple(A, B, C)) = triple(C, A, B)
 
 shape swap(pair(f(a), g(b)))
   apply swap
-  apply rule pair(a, b) = rot(triple(a, b, c))
+  apply rule pair(A, B) = rot(triple(A, B, c))
   apply rot
 done
