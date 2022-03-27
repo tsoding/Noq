@@ -31,10 +31,12 @@
 
 (defconst noq-mode-syntax-table
   (with-syntax-table (copy-syntax-table)
-    ;; C/C++ style comments
-	(modify-syntax-entry ?/ ". 124b")
-	(modify-syntax-entry ?* ". 23")
-	(modify-syntax-entry ?\n "> b")
+    ;; Python style comments
+    (modify-syntax-entry ?# "<")
+    (modify-syntax-entry ?\n ">")
+	;; (modify-syntax-entry ?/ ". 124b")
+	;; (modify-syntax-entry ?* ". 23")
+	;; (modify-syntax-entry ?\n "> b")
     ;; Chars are the same as strings
     (modify-syntax-entry ?' "\"")
     (syntax-table))
@@ -52,7 +54,7 @@
   "Major Mode for editing Noq source code."
   :syntax-table noq-mode-syntax-table
   (setq font-lock-defaults '(noq-highlights))
-  (setq-local comment-start "// "))
+  (setq-local comment-start "# "))
 
 ;;;###autoload
 (add-to-list 'auto-mode-alist '("\\.noq\\'" . noq-mode))

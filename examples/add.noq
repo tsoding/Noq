@@ -1,7 +1,11 @@
-rule add0 add(0, a) = a
-rule add add(s(a), b) = s(add(a, b))
+# Adding two Peano numbers
 
-shape add(s(s(0)), s(s(s(0))))
+rule add0 add(0, a) = a               # base
+rule add add(s(a), b) = s(add(a, b))  # recursion
+
+shape add(s(s(0)), s(s(s(0)))) # 2 + 3
+  # TODO: it would be nice to have a "strategy" that applies a particular rule
+  # until it applies
   apply add
   apply add
   apply add0

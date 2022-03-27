@@ -165,21 +165,39 @@ impl<Chars: Iterator<Item=char>> Lexer<Chars> {
     pub fn set_file_path(&mut self, file_path: &str) {
         self.file_path = Some(file_path.to_string())
     }
+
+    fn drop_line(&mut self) {
+        while let Some(_) = self.chars.next_if(|x| *x != '\n') {
+            self.cnum += 1
+        }
+        if let Some(_) = self.chars.next_if(|x| *x == '\n') {
+            self.cnum += 1;
+            self.lnum += 1;
+            self.bol = self.cnum
+        }
+    }
+
+    fn trim_whitespaces(&mut self) {
+        while let Some(_) = self.chars.next_if(|x| x.is_whitespace() && *x != '\n') {
+            self.cnum += 1
+        }
+    }
 }
 
 impl<Chars: Iterator<Item=char>> Iterator for Lexer<Chars> {
     type Item = Token;
 
     fn next(&mut self) -> Option<Token> {
-        // todo!("Make Lexer handle comments");
         if self.exhausted { return None }
 
-        while let Some(x) = self.chars.next_if(|x| x.is_whitespace()) {
-            self.cnum += 1;
-            if x == '\n' {
-                self.lnum += 1;
-                self.bol = self.cnum;
+        self.trim_whitespaces();
+        while let Some(x) = self.chars.peek() {
+            if *x != '\n' && *x != '#' {
+                break
             }
+
+            self.drop_line();
+            self.trim_whitespaces();
         }
 
         let loc = self.loc();
