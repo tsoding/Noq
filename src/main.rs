@@ -437,39 +437,41 @@ fn main() {
             stdout().flush().unwrap();
             stdin().read_line(&mut command).unwrap();
             let mut lexer = Lexer::from_iter(command.trim().chars()).peekable();
-            let result = context.process_command(&mut lexer)
-                .and_then(|()| expect_token_kind(&mut lexer, TokenKindSet::single(TokenKind::End)));
-            match result {
-                Err(Error::UnexpectedToken(expected, actual)) => {
-                    eprint_repl_loc_cursor(prompt, &actual.loc);
-                    eprintln!("ERROR: expected {} but got {} '{}'", expected, actual.kind, actual.text);
+            if lexer.peek().expect("Completely exhausted lexer").kind != TokenKind::End {
+                let result = context.process_command(&mut lexer)
+                    .and_then(|()| expect_token_kind(&mut lexer, TokenKindSet::single(TokenKind::End)));
+                match result {
+                    Err(Error::UnexpectedToken(expected, actual)) => {
+                        eprint_repl_loc_cursor(prompt, &actual.loc);
+                        eprintln!("ERROR: expected {} but got {} '{}'", expected, actual.kind, actual.text);
+                    }
+                    Err(Error::RuleAlreadyExists(name, new_loc, _old_loc)) => {
+                        eprint_repl_loc_cursor(prompt, &new_loc);
+                        eprintln!("ERROR: redefinition of existing rule {}", name);
+                    }
+                    Err(Error::AlreadyShaping(loc)) => {
+                        eprint_repl_loc_cursor(prompt, &loc);
+                        eprintln!("ERROR: already shaping an expression. Finish the current shaping with {} first.",
+                                  TokenKind::Done);
+                    }
+                    Err(Error::NoShapingInPlace(loc)) => {
+                        eprint_repl_loc_cursor(prompt, &loc);
+                        eprintln!("ERROR: no shaping in place.");
+                    }
+                    Err(Error::RuleDoesNotExist(name, loc)) => {
+                        eprint_repl_loc_cursor(prompt, &loc);
+                        eprintln!("ERROR: rule {} does not exist", name);
+                    }
+                    Err(Error::NoHistory(loc)) => {
+                        eprint_repl_loc_cursor(prompt, &loc);
+                        eprintln!("ERROR: no history");
+                    }
+                    Err(Error::UnknownStrategy(name, loc)) => {
+                        eprint_repl_loc_cursor(prompt, &loc);
+                        eprintln!("ERROR: unknown rule application strategy '{}'", name);
+                    }
+                    Ok(_) => {}
                 }
-                Err(Error::RuleAlreadyExists(name, new_loc, _old_loc)) => {
-                    eprint_repl_loc_cursor(prompt, &new_loc);
-                    eprintln!("ERROR: redefinition of existing rule {}", name);
-                }
-                Err(Error::AlreadyShaping(loc)) => {
-                    eprint_repl_loc_cursor(prompt, &loc);
-                    eprintln!("ERROR: already shaping an expression. Finish the current shaping with {} first.",
-                              TokenKind::Done);
-                }
-                Err(Error::NoShapingInPlace(loc)) => {
-                    eprint_repl_loc_cursor(prompt, &loc);
-                    eprintln!("ERROR: no shaping in place.");
-                }
-                Err(Error::RuleDoesNotExist(name, loc)) => {
-                    eprint_repl_loc_cursor(prompt, &loc);
-                    eprintln!("ERROR: rule {} does not exist", name);
-                }
-                Err(Error::NoHistory(loc)) => {
-                    eprint_repl_loc_cursor(prompt, &loc);
-                    eprintln!("ERROR: no history");
-                }
-                Err(Error::UnknownStrategy(name, loc)) => {
-                    eprint_repl_loc_cursor(prompt, &loc);
-                    eprintln!("ERROR: unknown rule application strategy '{}'", name);
-                }
-                Ok(_) => {}
             }
         }
     }
