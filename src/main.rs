@@ -495,3 +495,6 @@ fn main() {
         }
     }
 }
+
+// TODO: Introduce whilecard variable `_`
+// TODO: Parse the special functor head syntax (example: `[g(x, y)](a, b)`)
