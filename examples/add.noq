@@ -6,7 +6,7 @@ rule add add(s(A), B) = s(add(A, B))  # recursion
 shape add(s(s(0)), s(s(s(0)))) # 2 + 3
   # TODO: it would be nice to have a "strategy" that applies a particular rule
   # until it applies
-  apply add
-  apply add
-  apply add0
+  apply all add
+  apply all add
+  apply all add0
 done

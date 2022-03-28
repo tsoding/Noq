@@ -2,7 +2,7 @@ rule swap swap(pair(A, B))    = pair(B, A)
 rule rot rot(triple(A, B, C)) = triple(C, A, B)
 
 shape swap(pair(f(a), g(b)))
-  apply swap
-  apply rule pair(A, B) = rot(triple(A, B, c))
-  apply rot
+  apply all swap
+  apply all rule pair(A, B) = rot(triple(A, B, c))
+  apply all rot
 done

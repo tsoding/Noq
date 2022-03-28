@@ -25,6 +25,7 @@ enum Error {
     AlreadyShaping(Loc),
     NoShapingInPlace(Loc),
     NoHistory(Loc),
+    UnknownStrategy(String, Loc),
 }
 
 impl Expr {
@@ -76,11 +77,107 @@ impl fmt::Display for Expr {
     }
 }
 
+enum Action {
+    Skip,
+    Apply
+}
+
+enum State {
+    /// Stop the current recursion branch and try other braunches
+    Bail,
+    /// Continue applying the rule to the result of the application
+    Cont,
+    /// Completely stop the application process
+    Halt,
+}
+
+struct Resolution {
+    action: Action,
+    state: State,
+}
+
+trait Strategy {
+    fn matched(&mut self) -> Resolution;
+}
+
 #[derive(Debug)]
 struct Rule {
     loc: Loc,
     head: Expr,
     body: Expr,
+}
+
+struct ApplyAll;
+
+impl Strategy for ApplyAll {
+    fn matched(&mut self) -> Resolution {
+        Resolution {
+            action: Action::Apply,
+            state: State::Bail,
+        }
+    }
+}
+
+#[derive(Default)]
+struct ApplyFirst;
+
+impl Strategy for ApplyFirst {
+    fn matched(&mut self) -> Resolution {
+        Resolution {
+            action: Action::Apply,
+            state: State::Halt,
+        }
+    }
+}
+
+impl Rule {
+    fn apply(&self, expr: &Expr, strategy: &mut impl Strategy) -> Expr {
+        fn apply_impl(rule: &Rule, expr: &Expr, strategy: &mut impl Strategy) -> (Expr, bool) {
+            if let Some(bindings) = pattern_match(&rule.head, expr) {
+                let resolution = strategy.matched();
+                let new_expr = match resolution.action {
+                    Action::Apply => substitute_bindings(&bindings, &rule.body),
+                    Action::Skip => expr.clone(),
+                };
+                match resolution.state {
+                    State::Bail => (new_expr, false),
+                    State::Cont => apply_impl(rule, &new_expr, strategy),
+                    State::Halt => (new_expr, true),
+                }
+            } else {
+                use Expr::*;
+                match expr {
+                    Sym(_) | Var(_) => (expr.clone(), false),
+                    Fun(head, args) => {
+                        let (new_head, halt) = apply_impl(rule, head, strategy);
+                        if halt {
+                            (Fun(Box::new(new_head), args.clone()), true)
+                        } else {
+                            let mut new_args = Vec::<Expr>::new();
+                            let mut halt_args = false;
+                            for arg in args {
+                                if halt_args {
+                                    new_args.push(arg.clone())
+                                } else {
+                                    let (new_arg, halt) = apply_impl(rule, arg, strategy);
+                                    new_args.push(new_arg);
+                                    halt_args = halt;
+                                }
+                            }
+                            (Fun(Box::new(new_head), new_args), false)
+                        }
+                    }
+                }
+            }
+        }
+        apply_impl(self, expr, strategy).0
+    }
+}
+
+impl fmt::Display for Rule {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{} = {}", self.head, self.body)
+    }
 }
 
 fn substitute_bindings(bindings: &Bindings, expr: &Expr) -> Expr {
@@ -113,33 +210,6 @@ fn expect_token_kind(lexer: &mut Peekable<impl Iterator<Item=Token>>, kinds: Tok
         Ok(token)
     } else {
         Err(Error::UnexpectedToken(kinds, token))
-    }
-}
-
-impl Rule {
-    fn apply_all(&self, expr: &Expr) -> Expr {
-        if let Some(bindings) = pattern_match(&self.head, expr) {
-            substitute_bindings(&bindings, &self.body)
-        } else {
-            use Expr::*;
-            match expr {
-                Sym(_) | Var(_) => expr.clone(),
-                Fun(head, args) => {
-                    let new_head = self.apply_all(head);
-                    let mut new_args = Vec::new();
-                    for arg in args {
-                        new_args.push(self.apply_all(arg))
-                    }
-                    Fun(Box::new(new_head), new_args)
-                }
-            }
-        }
-    }
-}
-
-impl fmt::Display for Rule {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{} = {}", self.head, self.body)
     }
 }
 
@@ -289,19 +359,17 @@ impl Context {
             },
             TokenKind::Apply => {
                 if let Some(expr) = &self.current_expr {
+                    let strategy_name = expect_token_kind(lexer, TokenKindSet::single(TokenKind::Ident))?;
+
                     let expected_kinds = TokenKindSet::empty()
                         .set(TokenKind::Ident)
                         .set(TokenKind::Rule);
                     let token = expect_token_kind(lexer, expected_kinds)?;
-                    match token.kind {
+                    let mut anonymous_rule: Option<Rule> = None;
+                    let rule = match token.kind {
                         TokenKind::Ident => {
                             if let Some(rule) = self.rules.get(&token.text) {
-                                // todo!("Throw an error if not a single match for the rule was found")
-                                let new_expr = rule.apply_all(&expr);
-                                println!(" => {}", &new_expr);
-                                self.shaping_history.push(
-                                    self.current_expr.replace(new_expr).expect("current_expr must have something")
-                                );
+                                rule
                             } else {
                                 return Err(Error::RuleDoesNotExist(token.text, token.loc));
                             }
@@ -311,15 +379,23 @@ impl Context {
                             let head = Expr::parse(lexer)?;
                             expect_token_kind(lexer, TokenKindSet::single(TokenKind::Equals))?;
                             let body = Expr::parse(lexer)?;
-                            let new_expr = Rule {loc: token.loc, head, body}.apply_all(&expr);
-                            println!(" => {}", &new_expr);
-                            self.shaping_history.push(
-                                self.current_expr.replace(new_expr).expect("current_expr must have something")
-                            );
+                            anonymous_rule.insert(Rule {loc: token.loc, head, body})
                         }
 
                         _ => unreachable!("Expected {} but got {}", expected_kinds, token.kind)
-                    }
+                    };
+
+                    // todo!("Throw an error if not a single match for the rule was found")
+
+                    let new_expr = match &strategy_name.text as &str {
+                        "all" => rule.apply(&expr, &mut ApplyAll),
+                        "first" => rule.apply(&expr, &mut ApplyFirst),
+                        _ => return Err(Error::UnknownStrategy(strategy_name.text, strategy_name.loc))
+                    };
+                    println!(" => {}", &new_expr);
+                    self.shaping_history.push(
+                        self.current_expr.replace(new_expr).expect("current_expr must have something")
+                    );
                 } else {
                     return Err(Error::NoShapingInPlace(keyword.loc));
                 }
@@ -395,6 +471,9 @@ fn main() {
                     Error::NoHistory(loc) => {
                         eprintln!("{}: ERROR: no history", loc);
                     }
+                    Error::UnknownStrategy(name, loc) => {
+                        eprintln!("{}: ERROR: unknown rule application strategy '{}'", loc, name);
+                    }
                 }
                 std::process::exit(1);
             }
@@ -444,6 +523,10 @@ fn main() {
                 Err(Error::NoHistory(loc)) => {
                     eprint_repl_loc_cursor(prompt, &loc);
                     eprintln!("ERROR: no history");
+                }
+                Err(Error::UnknownStrategy(name, loc)) => {
+                    eprint_repl_loc_cursor(prompt, &loc);
+                    eprintln!("ERROR: unknown rule application strategy '{}'", name);
                 }
                 Ok(_) => {}
             }

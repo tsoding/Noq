@@ -49,7 +49,7 @@ For example here is how you shape expression `swap(pair(f(a), g(b)))` with the `
 
 ```
 shape swap(pair(f(a), g(b)))
-  apply swap
+  apply all swap
 done
 ```
 
@@ -61,7 +61,7 @@ You don't have to define a rule to use it in shaping. You can directly describe 
 
 ```
 shape swap(pair(f(a), g(b)))
-  apply rule swap(pair(A, B)) = pair(B, A)
+  apply all rule swap(pair(A, B)) = pair(B, A)
 done
 ```
 
