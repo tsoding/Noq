@@ -29,7 +29,7 @@ macro_rules! token_kind_enum {
 }
 
 token_kind_enum! {
-    Sym,
+    Ident,
 
     // Keywords
     Rule,
@@ -109,7 +109,7 @@ impl fmt::Display for TokenKind {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use TokenKind::*;
         match self {
-            Sym => write!(f, "symbol"),
+            Ident => write!(f, "identifier"),
             Rule => write!(f, "`rule`"),
             Shape => write!(f, "`shape`"),
             Apply => write!(f, "`apply`"),
@@ -224,7 +224,7 @@ impl<Chars: Iterator<Item=char>> Iterator for Lexer<Chars> {
                             if let Some(kind) = keyword_by_name(&text) {
                                 Some(Token{kind, text, loc})
                             } else {
-                                Some(Token{kind: TokenKind::Sym, text, loc})
+                                Some(Token{kind: TokenKind::Ident, text, loc})
                             }
                         }
                     }

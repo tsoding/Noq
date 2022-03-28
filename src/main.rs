@@ -37,29 +37,24 @@ impl Expr {
 
     fn parse(lexer: &mut Peekable<impl Iterator<Item=Token>>) -> Result<Self, Error> {
         use TokenKind::*;
-        let name = lexer.next().expect("Completely exhausted lexer");
-        match name.kind {
-            Sym => {
-                if let Some(_) = lexer.next_if(|t| t.kind == OpenParen) {
-                    let mut args = Vec::new();
-                    if let Some(_) = lexer.next_if(|t| t.kind == CloseParen) {
-                        return Ok(Expr::Fun(Box::new(Self::var_or_sym_from_name(&name.text)), args))
-                    }
-                    args.push(Self::parse(lexer)?);
-                    while let Some(_) = lexer.next_if(|t| t.kind == Comma) {
-                        args.push(Self::parse(lexer)?);
-                    }
-                    let close_paren = lexer.next().expect("Completely exhausted lexer");
-                    if close_paren.kind == CloseParen {
-                        Ok(Expr::Fun(Box::new(Self::var_or_sym_from_name(&name.text)), args))
-                    } else {
-                        Err(Error::UnexpectedToken(TokenKindSet::single(CloseParen), close_paren))
-                    }
-                } else {
-                    Ok(Self::var_or_sym_from_name(&name.text))
-                }
-            },
-            _ => Err(Error::UnexpectedToken(TokenKindSet::single(Sym), name))
+        let name = expect_token_kind(lexer, TokenKindSet::single(Ident))?;
+        if let Some(_) = lexer.next_if(|t| t.kind == OpenParen) {
+            let mut args = Vec::new();
+            if let Some(_) = lexer.next_if(|t| t.kind == CloseParen) {
+                return Ok(Expr::Fun(Box::new(Self::var_or_sym_from_name(&name.text)), args))
+            }
+            args.push(Self::parse(lexer)?);
+            while let Some(_) = lexer.next_if(|t| t.kind == Comma) {
+                args.push(Self::parse(lexer)?);
+            }
+            let close_paren = lexer.next().expect("Completely exhausted lexer");
+            if close_paren.kind == CloseParen {
+                Ok(Expr::Fun(Box::new(Self::var_or_sym_from_name(&name.text)), args))
+            } else {
+                Err(Error::UnexpectedToken(TokenKindSet::single(CloseParen), close_paren))
+            }
+        } else {
+            Ok(Self::var_or_sym_from_name(&name.text))
         }
     }
 }
@@ -267,7 +262,7 @@ impl Context {
         // todo!("Ability to undo the rule application");
         match keyword.kind {
             TokenKind::Rule => {
-                let name = expect_token_kind(lexer, TokenKindSet::single(TokenKind::Sym))?;
+                let name = expect_token_kind(lexer, TokenKindSet::single(TokenKind::Ident))?;
                 if let Some(existing_rule) = self.rules.get(&name.text) {
                     return Err(Error::RuleAlreadyExists(name.text, name.loc, existing_rule.loc.clone()))
                 }
@@ -293,11 +288,11 @@ impl Context {
             TokenKind::Apply => {
                 if let Some(expr) = &self.current_expr {
                     let expected_kinds = TokenKindSet::empty()
-                        .set(TokenKind::Sym)
+                        .set(TokenKind::Ident)
                         .set(TokenKind::Rule);
                     let token = expect_token_kind(lexer, expected_kinds)?;
                     match token.kind {
-                        TokenKind::Sym => {
+                        TokenKind::Ident => {
                             if let Some(rule) = self.rules.get(&token.text) {
                                 // todo!("Throw an error if not a single match for the rule was found")
                                 let new_expr = rule.apply_all(&expr);
