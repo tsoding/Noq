@@ -65,8 +65,11 @@ impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Expr::Sym(name) | Expr::Var(name) => write!(f, "{}", name),
-            Expr::Fun(name, args) => {
-                write!(f, "{}(", name)?;
+            Expr::Fun(head, args) => {
+                match &**head {
+                    Expr::Sym(name) | Expr::Var(name) => write!(f, "{}(", name)?,
+                    _ => write!(f, "[{}](", head)?,
+                }
                 for (i, arg) in args.iter().enumerate() {
                     if i > 0 { write!(f, ", ")? }
                     write!(f, "{}", arg)?;
