@@ -130,8 +130,45 @@ impl Strategy for ApplyFirst {
     }
 }
 
+struct ApplyDeep;
+
+impl Strategy for ApplyDeep {
+    fn matched(&mut self) -> Resolution {
+        Resolution {
+            action: Action::Apply,
+            state: State::Cont,
+        }
+    }
+}
+
 impl Rule {
     fn apply(&self, expr: &Expr, strategy: &mut impl Strategy) -> Expr {
+        fn apply_to_subexprs(rule: &Rule, expr: &Expr, strategy: &mut impl Strategy) -> (Expr, bool) {
+            use Expr::*;
+            match expr {
+                Sym(_) | Var(_) => (expr.clone(), false),
+                Fun(head, args) => {
+                    let (new_head, halt) = apply_impl(rule, head, strategy);
+                    if halt {
+                        (Fun(Box::new(new_head), args.clone()), true)
+                    } else {
+                        let mut new_args = Vec::<Expr>::new();
+                        let mut halt_args = false;
+                        for arg in args {
+                            if halt_args {
+                                new_args.push(arg.clone())
+                            } else {
+                                let (new_arg, halt) = apply_impl(rule, arg, strategy);
+                                new_args.push(new_arg);
+                                halt_args = halt;
+                            }
+                        }
+                        (Fun(Box::new(new_head), new_args), false)
+                    }
+                }
+            }
+        }
+
         fn apply_impl(rule: &Rule, expr: &Expr, strategy: &mut impl Strategy) -> (Expr, bool) {
             if let Some(bindings) = pattern_match(&rule.head, expr) {
                 let resolution = strategy.matched();
@@ -141,33 +178,11 @@ impl Rule {
                 };
                 match resolution.state {
                     State::Bail => (new_expr, false),
-                    State::Cont => apply_impl(rule, &new_expr, strategy),
+                    State::Cont => apply_to_subexprs(rule, &new_expr, strategy),
                     State::Halt => (new_expr, true),
                 }
             } else {
-                use Expr::*;
-                match expr {
-                    Sym(_) | Var(_) => (expr.clone(), false),
-                    Fun(head, args) => {
-                        let (new_head, halt) = apply_impl(rule, head, strategy);
-                        if halt {
-                            (Fun(Box::new(new_head), args.clone()), true)
-                        } else {
-                            let mut new_args = Vec::<Expr>::new();
-                            let mut halt_args = false;
-                            for arg in args {
-                                if halt_args {
-                                    new_args.push(arg.clone())
-                                } else {
-                                    let (new_arg, halt) = apply_impl(rule, arg, strategy);
-                                    new_args.push(new_arg);
-                                    halt_args = halt;
-                                }
-                            }
-                            (Fun(Box::new(new_head), new_args), false)
-                        }
-                    }
-                }
+                apply_to_subexprs(rule, expr, strategy)
             }
         }
         apply_impl(self, expr, strategy).0
@@ -231,7 +246,7 @@ fn pattern_match(pattern: &Expr, value: &Expr) -> Option<Bindings> {
                 }
             },
             (Fun(name1, args1), Fun(name2, args2)) => {
-                if name1 == name2 && args1.len() == args2.len() {
+                if pattern_match_impl(name1, name2, bindings) && args1.len() == args2.len() {
                     for i in 0..args1.len() {
                         if !pattern_match_impl(&args1[i], &args2[i], bindings) {
                             return false;
@@ -331,6 +346,7 @@ impl Context {
                     let new_expr = match &strategy_name.text as &str {
                         "all" => rule.apply(&expr, &mut ApplyAll),
                         "first" => rule.apply(&expr, &mut ApplyFirst),
+                        "deep" => rule.apply(&expr, &mut ApplyDeep),
                         _ => return Err(Error::UnknownStrategy(strategy_name.text, strategy_name.loc))
                     };
                     println!(" => {}", &new_expr);
