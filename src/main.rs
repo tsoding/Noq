@@ -255,65 +255,6 @@ fn pattern_match(pattern: &Expr, value: &Expr) -> Option<Bindings> {
     }
 }
 
-#[allow(unused_macros)]
-macro_rules! fun_args {
-    () => { vec![] };
-    ($name:ident) => { vec![expr!($name)] };
-    ($name:ident,$($rest:tt)*) => {
-        {
-            let mut t = vec![expr!($name)];
-            t.append(&mut fun_args!($($rest)*));
-            t
-        }
-    };
-    ($name:ident($($args:tt)*)) => {
-        vec![expr!($name($($args)*))]
-    };
-    ($name:ident($($args:tt)*),$($rest:tt)*) => {
-        {
-            let mut t = vec![expr!($name($($args)*))];
-            t.append(&mut fun_args!($($rest)*));
-            t
-        }
-    }
-}
-
-#[allow(unused_macros)]
-macro_rules! expr {
-    ($name:ident) => {
-        Expr::Sym(stringify!($name).to_string())
-    };
-    ($name:ident($($args:tt)*)) => {
-        Expr::Fun(stringify!($name).to_string(), fun_args!($($args)*))
-    };
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    pub fn rule_apply_all() {
-        // swap(pair(a, b)) = pair(b, a)
-        let swap = Rule {
-            head: expr!(swap(pair(a, b))),
-            body: expr!(pair(b, a)),
-        };
-
-        let input = expr! {
-            foo(swap(pair(f(a), g(b))),
-                swap(pair(q(c), z(d))))
-        };
-
-        let expected = expr! {
-            foo(pair(g(b), f(a)),
-                pair(z(d), q(c)))
-        };
-
-        assert_eq!(swap.apply_all(&input), expected);
-    }
-}
-
 #[derive(Default)]
 struct Context {
     rules: HashMap<String, Rule>,
