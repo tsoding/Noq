@@ -29,34 +29,43 @@ enum Error {
 }
 
 impl Expr {
-    fn var_or_sym_from_name(name: &str) -> Expr {
-        if name.chars().next().expect("Empty names are not allowed").is_uppercase() {
+    fn var_or_sym_based_on_name(name: &str) -> Expr {
+        if name.chars().next().expect("Empty names are not allowed. This might be a bug in the lexer.").is_uppercase() {
             Expr::Var(name.to_string())
         } else {
             Expr::Sym(name.to_string())
         }
     }
 
-    fn parse(lexer: &mut Peekable<impl Iterator<Item=Token>>) -> Result<Self, Error> {
+    fn parse_fun_args(lexer: &mut Peekable<impl Iterator<Item=Token>>) -> Result<Vec<Self>, Error> {
+        use TokenKind::*;
+        let mut args = Vec::new();
+        expect_token_kind(lexer, TokenKindSet::single(OpenParen))?;
+        if let Some(_) = lexer.next_if(|t| t.kind == CloseParen) {
+            return Ok(args)
+        }
+        args.push(Self::parse(lexer)?);
+        while let Some(_) = lexer.next_if(|t| t.kind == Comma) {
+            args.push(Self::parse(lexer)?);
+        }
+        let close_paren = lexer.next().expect("Completely exhausted lexer");
+        if close_paren.kind == CloseParen {
+            Ok(args)
+        } else {
+            Err(Error::UnexpectedToken(TokenKindSet::single(CloseParen), close_paren))
+        }
+    }
+
+    pub fn parse(lexer: &mut Peekable<impl Iterator<Item=Token>>) -> Result<Self, Error> {
         use TokenKind::*;
         let name = expect_token_kind(lexer, TokenKindSet::single(Ident))?;
-        if let Some(_) = lexer.next_if(|t| t.kind == OpenParen) {
-            let mut args = Vec::new();
-            if let Some(_) = lexer.next_if(|t| t.kind == CloseParen) {
-                return Ok(Expr::Fun(Box::new(Self::var_or_sym_from_name(&name.text)), args))
-            }
-            args.push(Self::parse(lexer)?);
-            while let Some(_) = lexer.next_if(|t| t.kind == Comma) {
-                args.push(Self::parse(lexer)?);
-            }
-            let close_paren = lexer.next().expect("Completely exhausted lexer");
-            if close_paren.kind == CloseParen {
-                Ok(Expr::Fun(Box::new(Self::var_or_sym_from_name(&name.text)), args))
-            } else {
-                Err(Error::UnexpectedToken(TokenKindSet::single(CloseParen), close_paren))
-            }
+        if lexer.peek().expect("Completely exhausted lexer").kind == TokenKind::OpenParen {
+            Ok(Expr::Fun(
+                Box::new(Self::var_or_sym_based_on_name(&name.text)),
+                Self::parse_fun_args(lexer)?
+            ))
         } else {
-            Ok(Self::var_or_sym_from_name(&name.text))
+            Ok(Self::var_or_sym_based_on_name(&name.text))
         }
     }
 }
