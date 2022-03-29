@@ -500,7 +500,6 @@ fn main() {
 }
 
 // TODO: Introduce wildcard variable `_`
-// TODO: Allow `_` in identifiers' names
 // TODO: Rule with several match clauses
 //
 // ```

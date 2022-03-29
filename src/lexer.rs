@@ -187,6 +187,10 @@ impl<Chars: Iterator<Item=char>> Lexer<Chars> {
     }
 }
 
+fn is_ident_char(x: &char) -> bool {
+    x.is_alphanumeric() || *x == '_'
+}
+
 impl<Chars: Iterator<Item=char>> Iterator for Lexer<Chars> {
     type Item = Token;
 
@@ -215,11 +219,11 @@ impl<Chars: Iterator<Item=char>> Iterator for Lexer<Chars> {
                     '=' => Some(Token {kind: TokenKind::Equals,     text, loc}),
                     ':' => Some(Token {kind: TokenKind::Colon,      text, loc}),
                     _ => {
-                        if !x.is_alphanumeric() {
+                        if !is_ident_char(&x) {
                             self.exhausted = true;
                             Some(Token{kind: TokenKind::Invalid, text, loc})
                         } else {
-                            while let Some(x) = self.chars.next_if(|x| x.is_alphanumeric()) {
+                            while let Some(x) = self.chars.next_if(is_ident_char) {
                                 self.cnum += 1;
                                 text.push(x)
                             }
