@@ -66,10 +66,7 @@ impl fmt::Display for Expr {
         match self {
             Expr::Sym(name) | Expr::Var(name) => write!(f, "{}", name),
             Expr::Fun(head, args) => {
-                match &**head {
-                    Expr::Sym(name) | Expr::Var(name) => write!(f, "{}(", name)?,
-                    _ => write!(f, "[{}](", head)?,
-                }
+                write!(f, "{}(", head)?;
                 for (i, arg) in args.iter().enumerate() {
                     if i > 0 { write!(f, ", ")? }
                     write!(f, "{}", arg)?;
@@ -497,4 +494,4 @@ fn main() {
 }
 
 // TODO: Introduce wildcard variable `_`
-// TODO: Parse the special functor head syntax (example: `[g(x, y)](a, b)`)
+// TODO: Parse expression application (example: `g(x, y)(a, b)`)
