@@ -30,7 +30,8 @@ enum Error {
 
 impl Expr {
     fn var_or_sym_based_on_name(name: &str) -> Expr {
-        if name.chars().next().expect("Empty names are not allowed. This might be a bug in the lexer.").is_uppercase() {
+        let x = name.chars().next().expect("Empty names are not allowed. This might be a bug in the lexer.");
+        if x.is_uppercase() || x == '_' {
             Expr::Var(name.to_string())
         } else {
             Expr::Sym(name.to_string())
@@ -244,13 +245,15 @@ fn pattern_match(pattern: &Expr, value: &Expr) -> Option<Bindings> {
                 name1 == name2
             }
             (Var(name), _) => {
-                if let Some(bound_value) = bindings.get(name) {
+                if name == "_" {
+                    true
+                } else if let Some(bound_value) = bindings.get(name) {
                     bound_value == value
                 } else {
                     bindings.insert(name.clone(), value.clone());
                     true
                 }
-            },
+            }
             (Fun(name1, args1), Fun(name2, args2)) => {
                 if pattern_match_impl(name1, name2, bindings) && args1.len() == args2.len() {
                     for i in 0..args1.len() {
@@ -499,7 +502,6 @@ fn main() {
     }
 }
 
-// TODO: Introduce wildcard variable `_`
 // TODO: Rule with several match clauses
 //
 // ```
