@@ -504,3 +504,23 @@ fn main() {
 
 // TODO: Introduce wildcard variable `_`
 // TODO: Parse expression application (example: `g(x, y)(a, b)`)
+// TODO: Rule with several match clauses
+//
+// ```
+// rule expand_some_numbers
+//   1 = s(0)
+//   2 = s(1)
+//   3 = s(2)
+//   4 = s(3)
+// end
+// ```
+//
+// So this can be applied as a single rule during different traversal strategies.
+// For example:
+//
+// ```console
+// noq> shape 4
+//  => 4
+// > apply deep expand_some_numbers
+//  => s(s(s(s(0))))
+// > done
