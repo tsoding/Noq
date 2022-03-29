@@ -57,16 +57,13 @@ impl Expr {
     }
 
     pub fn parse(lexer: &mut Peekable<impl Iterator<Item=Token>>) -> Result<Self, Error> {
-        use TokenKind::*;
-        let name = expect_token_kind(lexer, TokenKindSet::single(Ident))?;
-        if lexer.peek().expect("Completely exhausted lexer").kind == TokenKind::OpenParen {
-            Ok(Expr::Fun(
-                Box::new(Self::var_or_sym_based_on_name(&name.text)),
-                Self::parse_fun_args(lexer)?
-            ))
-        } else {
-            Ok(Self::var_or_sym_based_on_name(&name.text))
+        let mut head = Self::var_or_sym_based_on_name(
+            &expect_token_kind(lexer, TokenKindSet::single(TokenKind::Ident))?.text
+        );
+        while lexer.peek().expect("Completely exhausted lexer").kind == TokenKind::OpenParen {
+            head = Expr::Fun(Box::new(head), Self::parse_fun_args(lexer)?)
         }
+        Ok(head)
     }
 }
 
@@ -503,7 +500,7 @@ fn main() {
 }
 
 // TODO: Introduce wildcard variable `_`
-// TODO: Parse expression application (example: `g(x, y)(a, b)`)
+// TODO: Allow `_` in identifiers' names
 // TODO: Rule with several match clauses
 //
 // ```
