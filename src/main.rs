@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::iter::Peekable;
 use std::io::{stdin, stdout};
 use std::io::Write;
 use std::fmt;
@@ -38,20 +37,20 @@ impl Expr {
         }
     }
 
-    fn parse_fun_args(lexer: &mut Peekable<impl Iterator<Item=Token>>) -> Result<Vec<Self>, Error> {
+    fn parse_fun_args(lexer: &mut Lexer<impl Iterator<Item=char>>) -> Result<Vec<Self>, Error> {
         use TokenKind::*;
         let mut args = Vec::new();
         expect_token_kind(lexer, TokenKindSet::single(OpenParen))?;
-        if lexer.peek().expect("Completely exhausted lexer").kind == CloseParen {
-            lexer.next();
+        if lexer.peek_token().kind == CloseParen {
+            lexer.next_token();
             return Ok(args)
         }
         args.push(Self::parse(lexer)?);
-        while lexer.peek().expect("Completely exhausted lexer").kind == Comma {
-            lexer.next();
+        while lexer.peek_token().kind == Comma {
+            lexer.next_token();
             args.push(Self::parse(lexer)?);
         }
-        let close_paren = lexer.next().expect("Completely exhausted lexer");
+        let close_paren = lexer.next_token();
         if close_paren.kind == CloseParen {
             Ok(args)
         } else {
@@ -59,11 +58,11 @@ impl Expr {
         }
     }
 
-    pub fn parse(lexer: &mut Peekable<impl Iterator<Item=Token>>) -> Result<Self, Error> {
+    pub fn parse(lexer: &mut Lexer<impl Iterator<Item=char>>) -> Result<Self, Error> {
         let mut head = Self::var_or_sym_based_on_name(
             &expect_token_kind(lexer, TokenKindSet::single(TokenKind::Ident))?.text
         );
-        while lexer.peek().expect("Completely exhausted lexer").kind == TokenKind::OpenParen {
+        while lexer.peek_token().kind == TokenKind::OpenParen {
             head = Expr::Fun(Box::new(head), Self::parse_fun_args(lexer)?)
         }
         Ok(head)
@@ -87,6 +86,7 @@ impl fmt::Display for Expr {
 }
 
 enum Action {
+    #[allow(dead_code)]
     Skip,
     Apply
 }
@@ -228,8 +228,8 @@ fn substitute_bindings(bindings: &Bindings, expr: &Expr) -> Expr {
     }
 }
 
-fn expect_token_kind(lexer: &mut Peekable<impl Iterator<Item=Token>>, kinds: TokenKindSet) -> Result<Token, Error> {
-    let token = lexer.next().expect("Completely exhausted lexer");
+fn expect_token_kind(lexer: &mut Lexer<impl Iterator<Item=char>>, kinds: TokenKindSet) -> Result<Token, Error> {
+    let token = lexer.next_token();
     if kinds.contains(token.kind) {
         Ok(token)
     } else {
@@ -290,7 +290,7 @@ struct Context {
 }
 
 impl Context {
-    fn process_command(&mut self, lexer: &mut Peekable<impl Iterator<Item=Token>>) -> Result<(), Error> {
+    fn process_command(&mut self, lexer: &mut Lexer<impl Iterator<Item=char>>) -> Result<(), Error> {
         let expected_tokens = TokenKindSet::empty()
             .set(TokenKind::Rule)
             .set(TokenKind::Shape)
@@ -410,12 +410,8 @@ fn main() {
 
     if let Some(file_path) = args.next() {
         let source = fs::read_to_string(&file_path).unwrap();
-        let mut lexer = {
-            let mut lexer = Lexer::from_iter(source.chars());
-            lexer.set_file_path(&file_path);
-            lexer.peekable()
-        };
-        while !context.quit && lexer.peek().expect("Completely exhausted lexer").kind != TokenKind::End {
+        let mut lexer = Lexer::new(source.chars(), Some(file_path));
+        while !context.quit && lexer.peek_token().kind != TokenKind::End {
             if let Err(err) = context.process_command(&mut lexer) {
                 match err {
                     Error::UnexpectedToken(expected_kinds, actual_token) => {
@@ -463,8 +459,8 @@ fn main() {
             print!("{}", prompt);
             stdout().flush().unwrap();
             stdin().read_line(&mut command).unwrap();
-            let mut lexer = Lexer::from_iter(command.trim().chars()).peekable();
-            if lexer.peek().expect("Completely exhausted lexer").kind != TokenKind::End {
+            let mut lexer = Lexer::new(command.trim().chars(), None);
+            if lexer.peek_token().kind != TokenKind::End {
                 let result = context.process_command(&mut lexer)
                     .and_then(|()| expect_token_kind(&mut lexer, TokenKindSet::single(TokenKind::End)));
                 match result {

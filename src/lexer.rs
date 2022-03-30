@@ -71,7 +71,7 @@ impl TokenKindSet {
 
     pub fn contains(&self, kind: TokenKind) -> bool {
         let TokenKindSet(set) = self;
-        (set & (1 << kind as u64)) > 0
+        (set & (1 << kind as TokenKindSetInnerType)) > 0
     }
 }
 
@@ -138,6 +138,7 @@ pub struct Token {
 
 pub struct Lexer<Chars: Iterator<Item=char>> {
     chars: Peekable<Chars>,
+    peeked: Option<Token>,
     exhausted: bool,
     file_path: Option<String>,
     lnum: usize,
@@ -146,18 +147,19 @@ pub struct Lexer<Chars: Iterator<Item=char>> {
 }
 
 impl<Chars: Iterator<Item=char>> Lexer<Chars> {
-    pub fn from_iter(chars: Chars) -> Self {
+    pub fn new(chars: Chars, file_path: Option<String>) -> Self {
         Self {
             chars: chars.peekable(),
+            peeked: None,
             exhausted: false,
-            file_path: None,
+            file_path: file_path,
             lnum: 0,
             bol: 0,
             cnum: 0,
         }
     }
 
-    fn loc(&self) -> Loc {
+    pub fn loc(&self) -> Loc {
         Loc {
             file_path: self.file_path.clone(),
             row: self.lnum + 1,
@@ -165,8 +167,13 @@ impl<Chars: Iterator<Item=char>> Lexer<Chars> {
         }
     }
 
-    pub fn set_file_path(&mut self, file_path: &str) {
-        self.file_path = Some(file_path.to_string())
+    pub fn peek_token(&mut self) -> &Token {
+        let token = self.next_token();
+        self.peeked.insert(token)
+    }
+
+    pub fn next_token(&mut self) -> Token {
+        self.peeked.take().unwrap_or_else(|| self.chop_tokens_from_chars())
     }
 
     fn drop_line(&mut self) {
@@ -185,17 +192,9 @@ impl<Chars: Iterator<Item=char>> Lexer<Chars> {
             self.cnum += 1
         }
     }
-}
 
-fn is_ident_char(x: &char) -> bool {
-    x.is_alphanumeric() || *x == '_'
-}
-
-impl<Chars: Iterator<Item=char>> Iterator for Lexer<Chars> {
-    type Item = Token;
-
-    fn next(&mut self) -> Option<Token> {
-        if self.exhausted { return None }
+    fn chop_tokens_from_chars(&mut self) -> Token {
+        assert!(!self.exhausted, "Completely exhausted lexer. The lexer MUST ALWAYS end with the terminators. If the lexer caller tries to pull tokens after the terminators, this is a bug.");
 
         self.trim_whitespaces();
         while let Some(x) = self.chars.peek() {
@@ -213,15 +212,15 @@ impl<Chars: Iterator<Item=char>> Iterator for Lexer<Chars> {
                 self.cnum += 1;
                 let mut text = x.to_string();
                 match x {
-                    '(' => Some(Token {kind: TokenKind::OpenParen,  text, loc}),
-                    ')' => Some(Token {kind: TokenKind::CloseParen, text, loc}),
-                    ',' => Some(Token {kind: TokenKind::Comma,      text, loc}),
-                    '=' => Some(Token {kind: TokenKind::Equals,     text, loc}),
-                    ':' => Some(Token {kind: TokenKind::Colon,      text, loc}),
+                    '(' => Token {kind: TokenKind::OpenParen,  text, loc},
+                    ')' => Token {kind: TokenKind::CloseParen, text, loc},
+                    ',' => Token {kind: TokenKind::Comma,      text, loc},
+                    '=' => Token {kind: TokenKind::Equals,     text, loc},
+                    ':' => Token {kind: TokenKind::Colon,      text, loc},
                     _ => {
                         if !is_ident_char(&x) {
                             self.exhausted = true;
-                            Some(Token{kind: TokenKind::Invalid, text, loc})
+                            Token{kind: TokenKind::Invalid, text, loc}
                         } else {
                             while let Some(x) = self.chars.next_if(is_ident_char) {
                                 self.cnum += 1;
@@ -229,9 +228,9 @@ impl<Chars: Iterator<Item=char>> Iterator for Lexer<Chars> {
                             }
 
                             if let Some(kind) = keyword_by_name(&text) {
-                                Some(Token{kind, text, loc})
+                                Token{kind, text, loc}
                             } else {
-                                Some(Token{kind: TokenKind::Ident, text, loc})
+                                Token{kind: TokenKind::Ident, text, loc}
                             }
                         }
                     }
@@ -241,8 +240,12 @@ impl<Chars: Iterator<Item=char>> Iterator for Lexer<Chars> {
             None => {
                 self.cnum += 1;
                 self.exhausted = true;
-                Some(Token{kind: TokenKind::End, text: "".to_string(), loc})
+                Token{kind: TokenKind::End, text: "".to_string(), loc}
             }
         }
     }
+}
+
+fn is_ident_char(x: &char) -> bool {
+    x.is_alphanumeric() || *x == '_'
 }
