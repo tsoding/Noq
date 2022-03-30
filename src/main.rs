@@ -10,10 +10,32 @@ mod lexer;
 use lexer::*;
 
 #[derive(Debug, Clone, PartialEq)]
+enum Op {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Pow,
+}
+
+impl fmt::Display for Op {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Op::Add => write!(f, "+"),
+            Op::Sub => write!(f, "-"),
+            Op::Mul => write!(f, "*"),
+            Op::Div => write!(f, "/"),
+            Op::Pow => write!(f, "^"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 enum Expr {
     Sym(String),
     Var(String),
     Fun(Box<Expr>, Vec<Expr>),
+    Op(Op, Box<Expr>, Box<Expr>),
 }
 
 #[derive(Debug)]
@@ -81,6 +103,10 @@ impl fmt::Display for Expr {
                 }
                 write!(f, ")")
             },
+            Expr::Op(op, lhs, rhs) => {
+                // TODO: different spacing and parenthesis based on the precedence
+                write!(f, "{} {} {}", lhs, op, rhs)
+            }
         }
     }
 }
@@ -156,6 +182,7 @@ impl Rule {
             use Expr::*;
             match expr {
                 Sym(_) | Var(_) => (expr.clone(), false),
+                Op(_, _, _) => todo!("Applying rules to operators"),
                 Fun(head, args) => {
                     let (new_head, halt) = apply_impl(rule, head, strategy);
                     if halt {
@@ -215,7 +242,9 @@ fn substitute_bindings(bindings: &Bindings, expr: &Expr) -> Expr {
             } else {
                 expr.clone()
             }
-        },
+        }
+
+        Op(_, _, _) => todo!("Substituting variables for operators"),
 
         Fun(head, args) => {
             let new_head = substitute_bindings(bindings, head);
