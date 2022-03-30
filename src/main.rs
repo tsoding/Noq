@@ -42,11 +42,13 @@ impl Expr {
         use TokenKind::*;
         let mut args = Vec::new();
         expect_token_kind(lexer, TokenKindSet::single(OpenParen))?;
-        if let Some(_) = lexer.next_if(|t| t.kind == CloseParen) {
+        if lexer.peek().expect("Completely exhausted lexer").kind == CloseParen {
+            lexer.next();
             return Ok(args)
         }
         args.push(Self::parse(lexer)?);
-        while let Some(_) = lexer.next_if(|t| t.kind == Comma) {
+        while lexer.peek().expect("Completely exhausted lexer").kind == Comma {
+            lexer.next();
             args.push(Self::parse(lexer)?);
         }
         let close_paren = lexer.next().expect("Completely exhausted lexer");
