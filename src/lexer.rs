@@ -38,6 +38,7 @@ token_kind_enum! {
     Done,
     Undo,
     Quit,
+    Reverse,
 
     // Special Characters
     OpenParen,
@@ -104,12 +105,13 @@ const TOKEN_KIND_SIZE_ASSERT: [(); (TOKEN_KIND_ITEMS.len() < TokenKindSetInnerTy
 
 fn keyword_by_name(text: &str) -> Option<TokenKind> {
     match text {
-        "rule"  => Some(TokenKind::Rule),
-        "shape" => Some(TokenKind::Shape),
-        "apply" => Some(TokenKind::Apply),
-        "done"  => Some(TokenKind::Done),
-        "quit"  => Some(TokenKind::Quit),
-        "undo"  => Some(TokenKind::Undo),
+        "rule"    => Some(TokenKind::Rule),
+        "shape"   => Some(TokenKind::Shape),
+        "apply"   => Some(TokenKind::Apply),
+        "done"    => Some(TokenKind::Done),
+        "quit"    => Some(TokenKind::Quit),
+        "undo"    => Some(TokenKind::Undo),
+        "reverse" => Some(TokenKind::Reverse),
         _ => None,
     }
 }
@@ -125,6 +127,7 @@ impl fmt::Display for TokenKind {
             Done => write!(f, "`done`"),
             Undo => write!(f, "`undo`"),
             Quit => write!(f, "`quit`"),
+            Reverse => write!(f, "`reverse`"),
             OpenParen => write!(f, "open paren"),
             CloseParen => write!(f, "close paren"),
             Comma => write!(f, "comma"),

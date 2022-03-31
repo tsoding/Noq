@@ -225,7 +225,7 @@ trait Strategy {
     fn matched(&mut self) -> Resolution;
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Rule {
     loc: Loc,
     head: Expr,
@@ -444,6 +444,37 @@ struct Context {
 }
 
 impl Context {
+    fn parse_applied_rule(&self, lexer: &mut Lexer<impl Iterator<Item=char>>) -> Result<Rule, Error> {
+        let token = lexer.next_token();
+        match token.kind {
+            TokenKind::Reverse => {
+                let rule = self.parse_applied_rule(lexer)?;
+                Ok(Rule {
+                    loc: token.loc,
+                    head: rule.body,
+                    body: rule.head,
+                })
+            }
+
+            TokenKind::Rule => {
+                let head = Expr::parse(lexer)?;
+                expect_token_kind(lexer, TokenKindSet::single(TokenKind::Equals))?;
+                let body = Expr::parse(lexer)?;
+                Ok(Rule { loc: token.loc, head, body })
+            }
+
+            TokenKind::Ident => {
+                if let Some(rule) = self.rules.get(&token.text) {
+                    Ok(rule.clone())
+                } else {
+                    Err(Error::RuleDoesNotExist(token.text, token.loc))
+                }
+            }
+
+            _ => Err(Error::UnexpectedToken(TokenKindSet::single(TokenKind::Reverse).set(TokenKind::Rule).set(TokenKind::Ident), token))
+        }
+    }
+
     fn process_command(&mut self, lexer: &mut Lexer<impl Iterator<Item=char>>) -> Result<(), Error> {
         let expected_tokens = TokenKindSet::empty()
             .set(TokenKind::Rule)
@@ -482,30 +513,7 @@ impl Context {
                 if let Some(expr) = &self.current_expr {
                     let strategy_name = expect_token_kind(lexer, TokenKindSet::single(TokenKind::Ident))?;
 
-                    let expected_kinds = TokenKindSet::empty()
-                        .set(TokenKind::Ident)
-                        .set(TokenKind::Rule);
-                    let token = expect_token_kind(lexer, expected_kinds)?;
-                    let mut anonymous_rule: Option<Rule> = None;
-                    let rule = match token.kind {
-                        TokenKind::Ident => {
-                            if let Some(rule) = self.rules.get(&token.text) {
-                                rule
-                            } else {
-                                return Err(Error::RuleDoesNotExist(token.text, token.loc));
-                            }
-                        }
-
-                        TokenKind::Rule => {
-                            let head = Expr::parse(lexer)?;
-                            expect_token_kind(lexer, TokenKindSet::single(TokenKind::Equals))?;
-                            let body = Expr::parse(lexer)?;
-                            anonymous_rule.insert(Rule {loc: token.loc, head, body})
-                        }
-
-                        _ => unreachable!("Expected {} but got {}", expected_kinds, token.kind)
-                    };
-
+                    let rule = self.parse_applied_rule(lexer)?;
                     // todo!("Throw an error if not a single match for the rule was found")
 
                     let new_expr = match &strategy_name.text as &str {
@@ -657,7 +665,6 @@ fn main() {
     }
 }
 
-// TODO: Applying reversed rules
 // TODO: Implement replace! macro
 // TODO: Save session to file
 // TODO: Special mode for testing the parsing of the expressions
