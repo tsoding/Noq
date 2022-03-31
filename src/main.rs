@@ -9,13 +9,37 @@ mod lexer;
 
 use lexer::*;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 enum Op {
     Add,
     Sub,
     Mul,
     Div,
     Pow,
+}
+
+impl Op {
+    const MAX_PRECEDENCE: usize = 2;
+
+    fn from_token_kind(kind: TokenKind) -> Option<Self> {
+        match kind {
+            TokenKind::Plus => Some(Op::Add),
+            TokenKind::Dash => Some(Op::Sub),
+            TokenKind::Asterisk => Some(Op::Mul),
+            TokenKind::Slash => Some(Op::Div),
+            TokenKind::Caret => Some(Op::Pow),
+            _ => None
+        }
+    }
+
+    fn precedence(&self) -> usize {
+        use Op::*;
+        match self {
+            Add | Sub => 0,
+            Mul | Div => 1,
+            Pow       => 2,
+        }
+    }
 }
 
 impl fmt::Display for Op {
@@ -80,14 +104,58 @@ impl Expr {
         }
     }
 
-    pub fn parse(lexer: &mut Lexer<impl Iterator<Item=char>>) -> Result<Self, Error> {
-        let mut head = Self::var_or_sym_based_on_name(
-            &expect_token_kind(lexer, TokenKindSet::single(TokenKind::Ident))?.text
-        );
+    fn parse_fun_or_var_or_sym(lexer: &mut Lexer<impl Iterator<Item=char>>) -> Result<Self, Error> {
+        let mut head = {
+            let token = lexer.peek_token().clone();
+            match token.kind {
+                TokenKind::OpenParen => {
+                    lexer.next_token();
+                    let result = Self::parse(lexer)?;
+                    expect_token_kind(lexer, TokenKindSet::single(TokenKind::CloseParen))?;
+                    result
+                }
+
+                TokenKind::Ident => {
+                    lexer.next_token();
+                    Self::var_or_sym_based_on_name(&token.text)
+                },
+
+                _ => return Err(Error::UnexpectedToken(TokenKindSet::single(TokenKind::OpenParen).set(TokenKind::Ident), token))
+            }
+        };
+
         while lexer.peek_token().kind == TokenKind::OpenParen {
             head = Expr::Fun(Box::new(head), Self::parse_fun_args(lexer)?)
         }
         Ok(head)
+    }
+
+    fn parse_binary_operator(lexer: &mut Lexer<impl Iterator<Item=char>>, current_precedence: usize) -> Result<Self, Error> {
+        if current_precedence > Op::MAX_PRECEDENCE {
+            return Self::parse_fun_or_var_or_sym(lexer)
+        }
+
+        let mut result = Self::parse_binary_operator(lexer, current_precedence + 1)?;
+
+        while let Some(op) = Op::from_token_kind(lexer.peek_token().kind) {
+            if current_precedence != op.precedence() {
+                break
+            }
+
+            lexer.next_token();
+
+            result = Expr::Op(
+                op,
+                Box::new(result),
+                Box::new(Self::parse_binary_operator(lexer, current_precedence)?)
+            );
+        }
+
+        Ok(result)
+    }
+
+    pub fn parse(lexer: &mut Lexer<impl Iterator<Item=char>>) -> Result<Self, Error> {
+        Self::parse_binary_operator(lexer, 0)
     }
 }
 
@@ -105,7 +173,27 @@ impl fmt::Display for Expr {
             },
             Expr::Op(op, lhs, rhs) => {
                 // TODO: different spacing and parenthesis based on the precedence
-                write!(f, "{} {} {}", lhs, op, rhs)
+                match **lhs {
+                    Expr::Op(sub_op, _, _) => if sub_op.precedence() < op.precedence() {
+                        write!(f, "({})", lhs)?
+                    } else {
+                        write!(f, "{}", lhs)?
+                    }
+                    _ => write!(f, "{}", lhs)?
+                }
+                if op.precedence() == 0 {
+                    write!(f, " {} ", op)?;
+                } else {
+                    write!(f, "{}", op)?;
+                }
+                match **rhs {
+                    Expr::Op(sub_op, _, _) => if sub_op.precedence() < op.precedence() {
+                        write!(f, "({})", rhs)
+                    } else {
+                        write!(f, "{}", rhs)
+                    }
+                    _ => write!(f, "{}", rhs)
+                }
             }
         }
     }
@@ -182,7 +270,12 @@ impl Rule {
             use Expr::*;
             match expr {
                 Sym(_) | Var(_) => (expr.clone(), false),
-                Op(_, _, _) => todo!("Applying rules to operators"),
+                Op(op, lhs, rhs) => {
+                    let (new_lhs, halt) = apply_impl(rule, lhs, strategy);
+                    if halt { return (Op(*op, Box::new(new_lhs), rhs.clone()), true) }
+                    let (new_rhs, halt) = apply_impl(rule, rhs, strategy);
+                    (Op(*op, Box::new(new_lhs), Box::new(new_rhs)), halt)
+                },
                 Fun(head, args) => {
                     let (new_head, halt) = apply_impl(rule, head, strategy);
                     if halt {
@@ -244,7 +337,13 @@ fn substitute_bindings(bindings: &Bindings, expr: &Expr) -> Expr {
             }
         }
 
-        Op(_, _, _) => todo!("Substituting variables for operators"),
+        Op(op, lhs, rhs) => {
+            Op(
+                *op,
+                Box::new(substitute_bindings(bindings, lhs)),
+                Box::new(substitute_bindings(bindings, rhs))
+            )
+        },
 
         Fun(head, args) => {
             let new_head = substitute_bindings(bindings, head);
@@ -284,6 +383,9 @@ fn pattern_match(pattern: &Expr, value: &Expr) -> Option<Bindings> {
                     bindings.insert(name.clone(), value.clone());
                     true
                 }
+            }
+            (Op(op1, lhs1, rhs1), Op(op2, lhs2, rhs2)) => {
+                *op1 == *op2 && pattern_match_impl(lhs1, lhs2, bindings) && pattern_match_impl(rhs1, rhs2, bindings)
             }
             (Fun(name1, args1), Fun(name2, args2)) => {
                 if pattern_match_impl(name1, name2, bindings) && args1.len() == args2.len() {
@@ -529,6 +631,7 @@ fn main() {
     }
 }
 
+// TODO: Special mode for testing parsing of the expressions
 // TODO: Rule with several match clauses
 //
 // ```

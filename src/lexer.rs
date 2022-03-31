@@ -263,6 +263,18 @@ impl<Chars: Iterator<Item=char>> Lexer<Chars> {
     }
 }
 
+impl<Chars: Iterator<Item=char>> Iterator for Lexer<Chars> {
+    type Item = Token;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.exhausted {
+            None
+        } else {
+            Some(self.next_token())
+        }
+    }
+}
+
 fn is_ident_char(x: &char) -> bool {
     x.is_alphanumeric() || *x == '_'
 }
