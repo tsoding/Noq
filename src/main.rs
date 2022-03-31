@@ -653,7 +653,11 @@ fn main() {
     }
 }
 
-// TODO: Special mode for testing parsing of the expressions
+// TODO: Applying reversed rules
+// TODO: Implement replace! macro
+// TODO: Save session to file
+// TODO: Special mode for testing the parsing of the expressions
+// TODO: Custom arbitrary operators like in Haskell
 // TODO: Rule with several match clauses
 //
 // ```
