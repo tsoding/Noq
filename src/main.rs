@@ -669,6 +669,7 @@ fn main() {
 // TODO: Save session to file
 // TODO: Special mode for testing the parsing of the expressions
 // TODO: Custom arbitrary operators like in Haskell
+// TODO: Load rules from files
 // TODO: Rule with several match clauses
 //
 // ```
