@@ -172,7 +172,6 @@ impl fmt::Display for Expr {
                 write!(f, ")")
             },
             Expr::Op(op, lhs, rhs) => {
-                // TODO: different spacing and parenthesis based on the precedence
                 match **lhs {
                     Expr::Op(sub_op, _, _) => if sub_op.precedence() <= op.precedence() {
                         write!(f, "({})", lhs)?
