@@ -174,7 +174,7 @@ impl fmt::Display for Expr {
             Expr::Op(op, lhs, rhs) => {
                 // TODO: different spacing and parenthesis based on the precedence
                 match **lhs {
-                    Expr::Op(sub_op, _, _) => if sub_op.precedence() < op.precedence() {
+                    Expr::Op(sub_op, _, _) => if sub_op.precedence() <= op.precedence() {
                         write!(f, "({})", lhs)?
                     } else {
                         write!(f, "{}", lhs)?
@@ -187,7 +187,7 @@ impl fmt::Display for Expr {
                     write!(f, "{}", op)?;
                 }
                 match **rhs {
-                    Expr::Op(sub_op, _, _) => if sub_op.precedence() < op.precedence() {
+                    Expr::Op(sub_op, _, _) => if sub_op.precedence() <= op.precedence() {
                         write!(f, "({})", rhs)
                     } else {
                         write!(f, "{}", rhs)
@@ -200,7 +200,6 @@ impl fmt::Display for Expr {
 }
 
 enum Action {
-    #[allow(dead_code)]
     Skip,
     Apply
 }
@@ -241,18 +240,6 @@ impl Strategy for ApplyAll {
     }
 }
 
-#[derive(Default)]
-struct ApplyFirst;
-
-impl Strategy for ApplyFirst {
-    fn matched(&mut self) -> Resolution {
-        Resolution {
-            action: Action::Apply,
-            state: State::Halt,
-        }
-    }
-}
-
 struct ApplyDeep;
 
 impl Strategy for ApplyDeep {
@@ -260,6 +247,39 @@ impl Strategy for ApplyDeep {
         Resolution {
             action: Action::Apply,
             state: State::Cont,
+        }
+    }
+}
+
+struct ApplyNth {
+    current: usize,
+    target: usize,
+}
+
+impl ApplyNth {
+    fn new(target: usize) -> Self {
+        Self {current: 0, target}
+    }
+}
+
+impl Strategy for ApplyNth {
+    fn matched(&mut self) -> Resolution {
+        if self.current == self.target {
+            Resolution {
+                action: Action::Apply,
+                state: State::Halt,
+            }
+        } else if self.current > self.target {
+            Resolution {
+                action: Action::Skip,
+                state: State::Halt,
+            }
+        } else {
+            self.current += 1;
+            Resolution {
+                action: Action::Skip,
+                state: State::Cont,
+            }
         }
     }
 }
@@ -487,9 +507,12 @@ impl Context {
 
                     let new_expr = match &strategy_name.text as &str {
                         "all" => rule.apply(&expr, &mut ApplyAll),
-                        "first" => rule.apply(&expr, &mut ApplyFirst),
+                        "first" => rule.apply(&expr, &mut ApplyNth::new(0)),
                         "deep" => rule.apply(&expr, &mut ApplyDeep),
-                        _ => return Err(Error::UnknownStrategy(strategy_name.text, strategy_name.loc))
+                        x => match x.parse() {
+                            Ok(x) => rule.apply(&expr, &mut ApplyNth::new(x)),
+                            _ => return Err(Error::UnknownStrategy(strategy_name.text, strategy_name.loc))
+                        }
                     };
                     println!(" => {}", &new_expr);
                     self.shaping_history.push(
