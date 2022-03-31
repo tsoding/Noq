@@ -164,7 +164,11 @@ impl fmt::Display for Expr {
         match self {
             Expr::Sym(name) | Expr::Var(name) => write!(f, "{}", name),
             Expr::Fun(head, args) => {
-                write!(f, "{}(", head)?;
+                match &**head {
+                    Expr::Sym(name) | Expr::Var(name) => write!(f, "{}", name)?,
+                    other => write!(f, "({})", other)?,
+                }
+                write!(f, "(")?;
                 for (i, arg) in args.iter().enumerate() {
                     if i > 0 { write!(f, ", ")? }
                     write!(f, "{}", arg)?;
