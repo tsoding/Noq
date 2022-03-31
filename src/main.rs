@@ -674,3 +674,4 @@ fn main() {
 // > apply deep expand_some_numbers
 //  => s(s(s(s(0))))
 // > done
+// TODO: free variable capturing problem
