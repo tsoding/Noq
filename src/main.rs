@@ -563,129 +563,194 @@ fn eprint_repl_loc_cursor(prompt: &str, loc: &Loc) {
     eprintln!("{:>width$}^", "", width=prompt.len() + loc.col - 1);
 }
 
-fn main() {
-    let mut args = env::args();
-    args.next(); // skip program
+fn start_parser_debugger() {
+    let prompt = "expr> ";
+    let mut command = String::new();
+    loop {
+        command.clear();
+        print!("{}", prompt);
+        stdout().flush().unwrap();
+        stdin().read_line(&mut command).unwrap();
 
-    let mut context = Context::default();
-
-    if let Some(file_path) = args.next() {
-        let source = fs::read_to_string(&file_path).unwrap();
-        let mut lexer = Lexer::new(source.chars(), Some(file_path));
-        while !context.quit && lexer.peek_token().kind != TokenKind::End {
-            if let Err(err) = context.process_command(&mut lexer) {
-                match err {
-                    Error::UnexpectedToken(expected_kinds, actual_token) => {
-                        eprintln!("{}: ERROR: expected {} but got {} '{}'",
-                                  actual_token.loc, expected_kinds, actual_token.kind, actual_token.text);
-                    }
-                    Error::RuleAlreadyExists(name, new_loc, old_loc) => {
-                        eprintln!("{}: ERROR: redefinition of existing rule {}", new_loc, name);
-                        eprintln!("{}: Previous definition is located here", old_loc);
-                    }
-                    Error::RuleDoesNotExist(name, loc) => {
-                        eprintln!("{}: ERROR: rule {} does not exist", loc, name);
-                    }
-                    Error::AlreadyShaping(loc) => {
-                        eprintln!("{}: ERROR: already shaping an expression. Finish the current shaping with {} first.",
-                                  loc, TokenKind::Done);
-                    }
-                    Error::NoShapingInPlace(loc) => {
-                        eprintln!("{}: ERROR: no shaping in place.", loc);
-                    }
-                    Error::NoHistory(loc) => {
-                        eprintln!("{}: ERROR: no history", loc);
-                    }
-                    Error::UnknownStrategy(name, loc) => {
-                        eprintln!("{}: ERROR: unknown rule application strategy '{}'", loc, name);
-                    }
-                    Error::ExpectedFunSymVar(token) => {
-                        eprintln!("{}: ERROR: expected Primary Expression (which is either functor, symbol or variable), but got {}", token.loc, token.kind)
-                    }
-                    Error::ExpectedAppliedRule(token) => {
-                        eprintln!("{}: ERROR: expected applied rule argument, but got {}", token.loc, token.kind)
-                    }
-                    Error::ExpectedCommand(token) => {
-                        eprintln!("{}: ERROR: expected command, but got {}", token.loc, token.kind)
-                    }
-                }
-                std::process::exit(1);
-            }
-        }
-    } else {
-        let mut command = String::new();
-
-        let default_prompt = "noq> ";
-        let shaping_prompt = "> ";
-        let mut prompt: &str;
-
-        while !context.quit {
-            command.clear();
-            if let Some(_) = &context.current_expr {
-                prompt = shaping_prompt;
-            } else {
-                prompt = default_prompt;
-            }
-            print!("{}", prompt);
-            stdout().flush().unwrap();
-            stdin().read_line(&mut command).unwrap();
-            let mut lexer = Lexer::new(command.trim().chars(), None);
-            if lexer.peek_token().kind != TokenKind::End {
-                let result = context.process_command(&mut lexer)
-                    .and_then(|()| expect_token_kind(&mut lexer, TokenKind::End));
-                match result {
-                    Err(Error::UnexpectedToken(expected, actual)) => {
-                        eprint_repl_loc_cursor(prompt, &actual.loc);
-                        eprintln!("ERROR: expected {} but got {} '{}'", expected, actual.kind, actual.text);
-                    }
-                    Err(Error::RuleAlreadyExists(name, new_loc, _old_loc)) => {
-                        eprint_repl_loc_cursor(prompt, &new_loc);
-                        eprintln!("ERROR: redefinition of existing rule {}", name);
-                    }
-                    Err(Error::AlreadyShaping(loc)) => {
-                        eprint_repl_loc_cursor(prompt, &loc);
-                        eprintln!("ERROR: already shaping an expression. Finish the current shaping with {} first.",
-                                  TokenKind::Done);
-                    }
-                    Err(Error::NoShapingInPlace(loc)) => {
-                        eprint_repl_loc_cursor(prompt, &loc);
-                        eprintln!("ERROR: no shaping in place.");
-                    }
-                    Err(Error::RuleDoesNotExist(name, loc)) => {
-                        eprint_repl_loc_cursor(prompt, &loc);
-                        eprintln!("ERROR: rule {} does not exist", name);
-                    }
-                    Err(Error::NoHistory(loc)) => {
-                        eprint_repl_loc_cursor(prompt, &loc);
-                        eprintln!("ERROR: no history");
-                    }
-                    Err(Error::UnknownStrategy(name, loc)) => {
-                        eprint_repl_loc_cursor(prompt, &loc);
-                        eprintln!("ERROR: unknown rule application strategy '{}'", name);
-                    }
-                    Err(Error::ExpectedFunSymVar(token)) => {
-                        eprint_repl_loc_cursor(prompt, &token.loc);
-                        eprintln!("ERROR: expected Primary Expression (which is either functor, symbol or variable), but got {}", token.kind)
-                    }
-                    Err(Error::ExpectedAppliedRule(token)) => {
-                        eprint_repl_loc_cursor(prompt, &token.loc);
-                        eprintln!("ERROR: expected applied rule argument, but got {}", token.kind)
-                    }
-                    Err(Error::ExpectedCommand(token)) => {
-                        eprint_repl_loc_cursor(prompt, &token.loc);
-                        eprintln!("ERROR: expected command, but got {}", token.kind)
-                    }
-                    Ok(_) => {}
+        let mut lexer = Lexer::new(command.trim().chars(), None);
+        if lexer.peek_token().kind != TokenKind::End {
+            match Expr::parse(&mut lexer) {
+                Err(err) => report_error_in_repl(&err, prompt),
+                Ok(expr) => {
+                    println!("  Display:  {}", expr);
+                    println!("  Debug:    {:?}", expr);
+                    println!("  Unparsed: {:?}", lexer.map(|t| t.kind).collect::<Vec<_>>());
                 }
             }
         }
     }
 }
 
-// TODO: An ability to redefine the rules in REPL
+fn report_error_in_repl(err: &Error, prompt: &str) {
+    match err {
+        Error::UnexpectedToken(expected, actual) => {
+            eprint_repl_loc_cursor(prompt, &actual.loc);
+            eprintln!("ERROR: expected {} but got {} '{}'", expected, actual.kind, actual.text);
+        }
+        Error::RuleAlreadyExists(name, new_loc, _old_loc) => {
+            eprint_repl_loc_cursor(prompt, &new_loc);
+            eprintln!("ERROR: redefinition of existing rule {}", name);
+        }
+        Error::AlreadyShaping(loc) => {
+            eprint_repl_loc_cursor(prompt, &loc);
+            eprintln!("ERROR: already shaping an expression. Finish the current shaping with {} first.",
+                      TokenKind::Done);
+        }
+        Error::NoShapingInPlace(loc) => {
+            eprint_repl_loc_cursor(prompt, &loc);
+            eprintln!("ERROR: no shaping in place.");
+        }
+        Error::RuleDoesNotExist(name, loc) => {
+            eprint_repl_loc_cursor(prompt, &loc);
+            eprintln!("ERROR: rule {} does not exist", name);
+        }
+        Error::NoHistory(loc) => {
+            eprint_repl_loc_cursor(prompt, &loc);
+            eprintln!("ERROR: no history");
+        }
+        Error::UnknownStrategy(name, loc) => {
+            eprint_repl_loc_cursor(prompt, &loc);
+            eprintln!("ERROR: unknown rule application strategy '{}'", name);
+        }
+        Error::ExpectedFunSymVar(token) => {
+            eprint_repl_loc_cursor(prompt, &token.loc);
+            eprintln!("ERROR: expected Primary Expression (which is either functor, symbol or variable), but got {}", token.kind)
+        }
+        Error::ExpectedAppliedRule(token) => {
+            eprint_repl_loc_cursor(prompt, &token.loc);
+            eprintln!("ERROR: expected applied rule argument, but got {}", token.kind)
+        }
+        Error::ExpectedCommand(token) => {
+            eprint_repl_loc_cursor(prompt, &token.loc);
+            eprintln!("ERROR: expected command, but got {}", token.kind)
+        }
+    }
+}
+
+fn interpret_file(file_path: &str) {
+    let mut context = Context::default();
+    let source = fs::read_to_string(&file_path).unwrap();
+    let mut lexer = Lexer::new(source.chars(), Some(file_path.to_string()));
+    while !context.quit && lexer.peek_token().kind != TokenKind::End {
+        if let Err(err) = context.process_command(&mut lexer) {
+            match err {
+                Error::UnexpectedToken(expected_kinds, actual_token) => {
+                    eprintln!("{}: ERROR: expected {} but got {} '{}'",
+                              actual_token.loc, expected_kinds, actual_token.kind, actual_token.text);
+                }
+                Error::RuleAlreadyExists(name, new_loc, old_loc) => {
+                    eprintln!("{}: ERROR: redefinition of existing rule {}", new_loc, name);
+                    eprintln!("{}: Previous definition is located here", old_loc);
+                }
+                Error::RuleDoesNotExist(name, loc) => {
+                    eprintln!("{}: ERROR: rule {} does not exist", loc, name);
+                }
+                Error::AlreadyShaping(loc) => {
+                    eprintln!("{}: ERROR: already shaping an expression. Finish the current shaping with {} first.",
+                              loc, TokenKind::Done);
+                }
+                Error::NoShapingInPlace(loc) => {
+                    eprintln!("{}: ERROR: no shaping in place.", loc);
+                }
+                Error::NoHistory(loc) => {
+                    eprintln!("{}: ERROR: no history", loc);
+                }
+                Error::UnknownStrategy(name, loc) => {
+                    eprintln!("{}: ERROR: unknown rule application strategy '{}'", loc, name);
+                }
+                Error::ExpectedFunSymVar(token) => {
+                    eprintln!("{}: ERROR: expected Primary Expression (which is either functor, symbol or variable), but got {}", token.loc, token.kind)
+                }
+                Error::ExpectedAppliedRule(token) => {
+                    eprintln!("{}: ERROR: expected applied rule argument, but got {}", token.loc, token.kind)
+                }
+                Error::ExpectedCommand(token) => {
+                    eprintln!("{}: ERROR: expected command, but got {}", token.loc, token.kind)
+                }
+            }
+            std::process::exit(1);
+        }
+    }
+}
+
+fn start_repl() {
+    let mut context = Context::default();
+    let mut command = String::new();
+
+    let default_prompt = "noq> ";
+    let shaping_prompt = "> ";
+    let mut prompt: &str;
+
+    while !context.quit {
+        command.clear();
+        if let Some(_) = &context.current_expr {
+            prompt = shaping_prompt;
+        } else {
+            prompt = default_prompt;
+        }
+        print!("{}", prompt);
+        stdout().flush().unwrap();
+        stdin().read_line(&mut command).unwrap();
+        let mut lexer = Lexer::new(command.trim().chars(), None);
+        if lexer.peek_token().kind != TokenKind::End {
+            let result = context.process_command(&mut lexer)
+                .and_then(|()| expect_token_kind(&mut lexer, TokenKind::End));
+            if let Err(err) = result {
+                report_error_in_repl(&err, prompt);
+            }
+        }
+    }
+}
+
+#[derive(Default)]
+struct Config {
+    program: String,
+    file_path: Option<String>,
+    debug_parser: bool,
+}
+
+impl Config {
+    fn from_iter(args: &mut impl Iterator<Item=String>) -> Self {
+        let mut config: Self = Default::default();
+
+        config.program = args.next().expect("Program name should be always present");
+
+        while let Some(arg) = args.next() {
+            match arg.as_str() {
+                "--debug-parser" => config.debug_parser = true,
+                other => if config.file_path.is_none() {
+                    config.file_path = Some(other.to_string())
+                } else {
+                    eprintln!("ERROR: file path was already provided. Interpreting several files is not supported yet");
+                    std::process::exit(1)
+                }
+            }
+        }
+
+        config
+    }
+}
+
+fn main() {
+    let config = Config::from_iter(&mut env::args());
+
+    if config.debug_parser {
+        start_parser_debugger()
+    } else if let Some(file_path) = config.file_path {
+        interpret_file(&file_path)
+    } else {
+        start_repl()
+    }
+}
+
 // TODO: Implement replace! macro
 // TODO: Load rules from files
 // TODO: Custom arbitrary operators like in Haskell
 // TODO: Save session to file
-// TODO: Special mode for testing the parsing of the expressions
+// TODO: An ability to redefine the rules in REPL
 // TODO: Conditional matching of rules. Some sort of ability to combine several rules into one which tries all the provided rules sequentially and pickes the one that matches
