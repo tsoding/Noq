@@ -24,6 +24,7 @@ macro_rules! token_kind_enum {
             $($kinds),*
         }
 
+        #[allow(dead_code)]
         pub const TOKEN_KIND_ITEMS: [TokenKind; [$(TokenKind::$kinds),*].len()] = [$(TokenKind::$kinds),*];
     }
 }
@@ -58,50 +59,6 @@ token_kind_enum! {
     Invalid,
     End,
 }
-
-type TokenKindSetInnerType = u64;
-#[derive(Debug, PartialEq, Clone, Copy, Eq, Hash)]
-pub struct TokenKindSet(TokenKindSetInnerType);
-
-impl TokenKindSet {
-    pub const fn empty() -> Self {
-        Self(0)
-    }
-
-    pub const fn single(kind: TokenKind) -> Self {
-        Self::empty().set(kind)
-    }
-
-    pub const fn set(self, kind: TokenKind) -> Self {
-        let TokenKindSet(set) = self;
-        TokenKindSet(set | (1 << kind as TokenKindSetInnerType))
-    }
-
-    pub fn contains(&self, kind: TokenKind) -> bool {
-        let TokenKindSet(set) = self;
-        (set & (1 << kind as TokenKindSetInnerType)) > 0
-    }
-}
-
-impl fmt::Display for TokenKindSet {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let xs: Vec<TokenKind> = TOKEN_KIND_ITEMS.iter().cloned().filter(|kind| self.contains(*kind)).collect();
-        match xs.len() {
-            0 => write!(f, "nothing"),
-            1 => write!(f, "{}", xs[0]),
-            n => {
-                write!(f, "{}", xs[0])?;
-                for i in 1..n-1 {
-                    write!(f, ", {}", xs[i])?
-                }
-                write!(f, ", or {}", xs[n-1])
-            }
-        }
-    }
-}
-
-#[allow(dead_code)]
-const TOKEN_KIND_SIZE_ASSERT: [(); (TOKEN_KIND_ITEMS.len() < TokenKindSetInnerType::BITS as usize) as usize] = [()];
 
 fn keyword_by_name(text: &str) -> Option<TokenKind> {
     match text {

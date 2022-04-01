@@ -64,13 +64,16 @@ enum Expr {
 
 #[derive(Debug)]
 enum Error {
-    UnexpectedToken(TokenKindSet, Token),
+    UnexpectedToken(TokenKind, Token),
     RuleAlreadyExists(String, Loc, Loc),
     RuleDoesNotExist(String, Loc),
     AlreadyShaping(Loc),
     NoShapingInPlace(Loc),
     NoHistory(Loc),
     UnknownStrategy(String, Loc),
+    ExpectedFunSymVar(Token),
+    ExpectedAppliedRule(Token),
+    ExpectedCommand(Token),
 }
 
 impl Expr {
@@ -86,7 +89,7 @@ impl Expr {
     fn parse_fun_args(lexer: &mut Lexer<impl Iterator<Item=char>>) -> Result<Vec<Self>, Error> {
         use TokenKind::*;
         let mut args = Vec::new();
-        expect_token_kind(lexer, TokenKindSet::single(OpenParen))?;
+        expect_token_kind(lexer, OpenParen)?;
         if lexer.peek_token().kind == CloseParen {
             lexer.next_token();
             return Ok(args)
@@ -100,7 +103,7 @@ impl Expr {
         if close_paren.kind == CloseParen {
             Ok(args)
         } else {
-            Err(Error::UnexpectedToken(TokenKindSet::single(CloseParen), close_paren))
+            Err(Error::UnexpectedToken(CloseParen, close_paren))
         }
     }
 
@@ -111,7 +114,7 @@ impl Expr {
                 TokenKind::OpenParen => {
                     lexer.next_token();
                     let result = Self::parse(lexer)?;
-                    expect_token_kind(lexer, TokenKindSet::single(TokenKind::CloseParen))?;
+                    expect_token_kind(lexer, TokenKind::CloseParen)?;
                     result
                 }
 
@@ -120,7 +123,7 @@ impl Expr {
                     Self::var_or_sym_based_on_name(&token.text)
                 },
 
-                _ => return Err(Error::UnexpectedToken(TokenKindSet::single(TokenKind::OpenParen).set(TokenKind::Ident), token))
+                _ => return Err(Error::ExpectedFunSymVar(token))
             }
         };
 
@@ -379,12 +382,12 @@ fn substitute_bindings(bindings: &Bindings, expr: &Expr) -> Expr {
     }
 }
 
-fn expect_token_kind(lexer: &mut Lexer<impl Iterator<Item=char>>, kinds: TokenKindSet) -> Result<Token, Error> {
+fn expect_token_kind(lexer: &mut Lexer<impl Iterator<Item=char>>, kind: TokenKind) -> Result<Token, Error> {
     let token = lexer.next_token();
-    if kinds.contains(token.kind) {
+    if kind == token.kind {
         Ok(token)
     } else {
-        Err(Error::UnexpectedToken(kinds, token))
+        Err(Error::UnexpectedToken(kind, token))
     }
 }
 
@@ -458,7 +461,7 @@ impl Context {
 
             TokenKind::Rule => {
                 let head = Expr::parse(lexer)?;
-                expect_token_kind(lexer, TokenKindSet::single(TokenKind::Equals))?;
+                expect_token_kind(lexer, TokenKind::Equals)?;
                 let body = Expr::parse(lexer)?;
                 Ok(Rule { loc: token.loc, head, body })
             }
@@ -471,27 +474,20 @@ impl Context {
                 }
             }
 
-            _ => Err(Error::UnexpectedToken(TokenKindSet::single(TokenKind::Reverse).set(TokenKind::Rule).set(TokenKind::Ident), token))
+            _ => Err(Error::ExpectedAppliedRule(token))
         }
     }
 
     fn process_command(&mut self, lexer: &mut Lexer<impl Iterator<Item=char>>) -> Result<(), Error> {
-        let expected_tokens = TokenKindSet::empty()
-            .set(TokenKind::Rule)
-            .set(TokenKind::Shape)
-            .set(TokenKind::Apply)
-            .set(TokenKind::Done)
-            .set(TokenKind::Undo)
-            .set(TokenKind::Quit);
-        let keyword = expect_token_kind(lexer, expected_tokens)?;
+        let keyword = lexer.next_token();
         match keyword.kind {
             TokenKind::Rule => {
-                let name = expect_token_kind(lexer, TokenKindSet::single(TokenKind::Ident))?;
+                let name = expect_token_kind(lexer, TokenKind::Ident)?;
                 if let Some(existing_rule) = self.rules.get(&name.text) {
                     return Err(Error::RuleAlreadyExists(name.text, name.loc, existing_rule.loc.clone()))
                 }
                 let head = Expr::parse(lexer)?;
-                expect_token_kind(lexer, TokenKindSet::single(TokenKind::Equals))?;
+                expect_token_kind(lexer, TokenKind::Equals)?;
                 let body = Expr::parse(lexer)?;
                 let rule = Rule {
                     loc: keyword.loc,
@@ -511,7 +507,7 @@ impl Context {
             },
             TokenKind::Apply => {
                 if let Some(expr) = &self.current_expr {
-                    let strategy_name = expect_token_kind(lexer, TokenKindSet::single(TokenKind::Ident))?;
+                    let strategy_name = expect_token_kind(lexer, TokenKind::Ident)?;
 
                     let rule = self.parse_applied_rule(lexer)?;
                     // todo!("Throw an error if not a single match for the rule was found")
@@ -556,7 +552,7 @@ impl Context {
             TokenKind::Quit => {
                 self.quit = true;
             }
-            _ => unreachable!("Expected {} but got {} '{}'", expected_tokens, keyword.kind, keyword.text),
+            _ => return Err(Error::ExpectedCommand(keyword)),
         }
         Ok(())
     }
@@ -603,6 +599,15 @@ fn main() {
                     Error::UnknownStrategy(name, loc) => {
                         eprintln!("{}: ERROR: unknown rule application strategy '{}'", loc, name);
                     }
+                    Error::ExpectedFunSymVar(token) => {
+                        eprintln!("{}: ERROR: expected Primary Expression (which is either functor, symbol or variable), but got {}", token.loc, token.kind)
+                    }
+                    Error::ExpectedAppliedRule(token) => {
+                        eprintln!("{}: ERROR: expected applied rule argument, but got {}", token.loc, token.kind)
+                    }
+                    Error::ExpectedCommand(token) => {
+                        eprintln!("{}: ERROR: expected command, but got {}", token.loc, token.kind)
+                    }
                 }
                 std::process::exit(1);
             }
@@ -627,7 +632,7 @@ fn main() {
             let mut lexer = Lexer::new(command.trim().chars(), None);
             if lexer.peek_token().kind != TokenKind::End {
                 let result = context.process_command(&mut lexer)
-                    .and_then(|()| expect_token_kind(&mut lexer, TokenKindSet::single(TokenKind::End)));
+                    .and_then(|()| expect_token_kind(&mut lexer, TokenKind::End));
                 match result {
                     Err(Error::UnexpectedToken(expected, actual)) => {
                         eprint_repl_loc_cursor(prompt, &actual.loc);
@@ -657,6 +662,18 @@ fn main() {
                     Err(Error::UnknownStrategy(name, loc)) => {
                         eprint_repl_loc_cursor(prompt, &loc);
                         eprintln!("ERROR: unknown rule application strategy '{}'", name);
+                    }
+                    Err(Error::ExpectedFunSymVar(token)) => {
+                        eprint_repl_loc_cursor(prompt, &token.loc);
+                        eprintln!("ERROR: expected Primary Expression (which is either functor, symbol or variable), but got {}", token.kind)
+                    }
+                    Err(Error::ExpectedAppliedRule(token)) => {
+                        eprint_repl_loc_cursor(prompt, &token.loc);
+                        eprintln!("ERROR: expected applied rule argument, but got {}", token.kind)
+                    }
+                    Err(Error::ExpectedCommand(token)) => {
+                        eprint_repl_loc_cursor(prompt, &token.loc);
+                        eprintln!("ERROR: expected command, but got {}", token.kind)
                     }
                     Ok(_) => {}
                 }
