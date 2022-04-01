@@ -63,17 +63,39 @@ enum Expr {
 }
 
 #[derive(Debug)]
-enum Error {
-    UnexpectedToken(TokenKind, Token),
+enum SyntaxError {
+    ExpectedToken(TokenKind, Token),
+    ExpectedPrimary(Token),
+    ExpectedAppliedRule(Token),
+    ExpectedCommand(Token),
+}
+
+#[derive(Debug)]
+enum RuntimeError {
     RuleAlreadyExists(String, Loc, Loc),
     RuleDoesNotExist(String, Loc),
     AlreadyShaping(Loc),
     NoShapingInPlace(Loc),
     NoHistory(Loc),
     UnknownStrategy(String, Loc),
-    ExpectedPrimary(Token),
-    ExpectedAppliedRule(Token),
-    ExpectedCommand(Token),
+}
+
+#[derive(Debug)]
+enum Error {
+    Runtime(RuntimeError),
+    Syntax(SyntaxError),
+}
+
+impl From<SyntaxError> for Error {
+    fn from(err: SyntaxError) -> Self {
+        Self::Syntax(err)
+    }
+}
+
+impl From<RuntimeError> for Error {
+    fn from(err: RuntimeError) -> Self {
+        Self::Runtime(err)
+    }
 }
 
 impl Expr {
@@ -86,7 +108,7 @@ impl Expr {
         }
     }
 
-    fn parse_fun_args(lexer: &mut Lexer<impl Iterator<Item=char>>) -> Result<Vec<Self>, Error> {
+    fn parse_fun_args(lexer: &mut Lexer<impl Iterator<Item=char>>) -> Result<Vec<Self>, SyntaxError> {
         use TokenKind::*;
         let mut args = Vec::new();
         expect_token_kind(lexer, OpenParen)?;
@@ -103,11 +125,11 @@ impl Expr {
         if close_paren.kind == CloseParen {
             Ok(args)
         } else {
-            Err(Error::UnexpectedToken(CloseParen, close_paren))
+            Err(SyntaxError::ExpectedToken(CloseParen, close_paren))
         }
     }
 
-    fn parse_fun_or_var_or_sym(lexer: &mut Lexer<impl Iterator<Item=char>>) -> Result<Self, Error> {
+    fn parse_fun_or_var_or_sym(lexer: &mut Lexer<impl Iterator<Item=char>>) -> Result<Self, SyntaxError> {
         let mut head = {
             let token = lexer.peek_token().clone();
             match token.kind {
@@ -123,7 +145,7 @@ impl Expr {
                     Self::var_or_sym_based_on_name(&token.text)
                 },
 
-                _ => return Err(Error::ExpectedPrimary(token))
+                _ => return Err(SyntaxError::ExpectedPrimary(token))
             }
         };
 
@@ -133,7 +155,7 @@ impl Expr {
         Ok(head)
     }
 
-    fn parse_binary_operator(lexer: &mut Lexer<impl Iterator<Item=char>>, current_precedence: usize) -> Result<Self, Error> {
+    fn parse_binary_operator(lexer: &mut Lexer<impl Iterator<Item=char>>, current_precedence: usize) -> Result<Self, SyntaxError> {
         if current_precedence > Op::MAX_PRECEDENCE {
             return Self::parse_fun_or_var_or_sym(lexer)
         }
@@ -157,7 +179,7 @@ impl Expr {
         Ok(result)
     }
 
-    pub fn parse(lexer: &mut Lexer<impl Iterator<Item=char>>) -> Result<Self, Error> {
+    pub fn parse(lexer: &mut Lexer<impl Iterator<Item=char>>) -> Result<Self, SyntaxError> {
         Self::parse_binary_operator(lexer, 0)
     }
 }
@@ -382,12 +404,12 @@ fn substitute_bindings(bindings: &Bindings, expr: &Expr) -> Expr {
     }
 }
 
-fn expect_token_kind(lexer: &mut Lexer<impl Iterator<Item=char>>, kind: TokenKind) -> Result<Token, Error> {
+fn expect_token_kind(lexer: &mut Lexer<impl Iterator<Item=char>>, kind: TokenKind) -> Result<Token, SyntaxError> {
     let token = lexer.next_token();
     if kind == token.kind {
         Ok(token)
     } else {
-        Err(Error::UnexpectedToken(kind, token))
+        Err(SyntaxError::ExpectedToken(kind, token))
     }
 }
 
@@ -470,11 +492,11 @@ impl Context {
                 if let Some(rule) = self.rules.get(&token.text) {
                     Ok(rule.clone())
                 } else {
-                    Err(Error::RuleDoesNotExist(token.text, token.loc))
+                    Err(RuntimeError::RuleDoesNotExist(token.text, token.loc).into())
                 }
             }
 
-            _ => Err(Error::ExpectedAppliedRule(token))
+            _ => Err(SyntaxError::ExpectedAppliedRule(token).into())
         }
     }
 
@@ -484,7 +506,7 @@ impl Context {
             TokenKind::Rule => {
                 let name = expect_token_kind(lexer, TokenKind::Ident)?;
                 if let Some(existing_rule) = self.rules.get(&name.text) {
-                    return Err(Error::RuleAlreadyExists(name.text, name.loc, existing_rule.loc.clone()))
+                    return Err(RuntimeError::RuleAlreadyExists(name.text, name.loc, existing_rule.loc.clone()).into())
                 }
                 let head = Expr::parse(lexer)?;
                 expect_token_kind(lexer, TokenKind::Equals)?;
@@ -498,7 +520,7 @@ impl Context {
             }
             TokenKind::Shape => {
                 if let Some(_) = self.current_expr {
-                    return Err(Error::AlreadyShaping(keyword.loc))
+                    return Err(RuntimeError::AlreadyShaping(keyword.loc).into())
                 }
 
                 let expr = Expr::parse(lexer)?;
@@ -518,7 +540,7 @@ impl Context {
                         "deep" => rule.apply(&expr, &mut ApplyDeep),
                         x => match x.parse() {
                             Ok(x) => rule.apply(&expr, &mut ApplyNth::new(x)),
-                            _ => return Err(Error::UnknownStrategy(strategy_name.text, strategy_name.loc))
+                            _ => return Err(RuntimeError::UnknownStrategy(strategy_name.text, strategy_name.loc).into())
                         }
                     };
                     println!(" => {}", &new_expr);
@@ -526,7 +548,7 @@ impl Context {
                         self.current_expr.replace(new_expr).expect("current_expr must have something")
                     );
                 } else {
-                    return Err(Error::NoShapingInPlace(keyword.loc));
+                    return Err(RuntimeError::NoShapingInPlace(keyword.loc).into());
                 }
             }
             TokenKind::Done => {
@@ -534,7 +556,7 @@ impl Context {
                     self.current_expr = None;
                     self.shaping_history.clear();
                 } else {
-                    return Err(Error::NoShapingInPlace(keyword.loc))
+                    return Err(RuntimeError::NoShapingInPlace(keyword.loc).into())
                 }
             }
             TokenKind::Undo => {
@@ -543,16 +565,16 @@ impl Context {
                         println!(" => {}", &previous_expr);
                         self.current_expr.replace(previous_expr);
                     } else {
-                        return Err(Error::NoHistory(keyword.loc))
+                        return Err(RuntimeError::NoHistory(keyword.loc).into())
                     }
                 } else {
-                    return Err(Error::NoShapingInPlace(keyword.loc))
+                    return Err(RuntimeError::NoShapingInPlace(keyword.loc).into())
                 }
             }
             TokenKind::Quit => {
                 self.quit = true;
             }
-            _ => return Err(Error::ExpectedCommand(keyword)),
+            _ => return Err(SyntaxError::ExpectedCommand(keyword).into()),
         }
         Ok(())
     }
@@ -575,7 +597,7 @@ fn start_parser_debugger() {
         let mut lexer = Lexer::new(command.trim().chars(), None);
         if lexer.peek_token().kind != TokenKind::End {
             match Expr::parse(&mut lexer) {
-                Err(err) => report_error_in_repl(&err, prompt),
+                Err(err) => report_error_in_repl(&err.into(), prompt),
                 Ok(expr) => {
                     println!("  Display:  {}", expr);
                     println!("  Debug:    {:?}", expr);
@@ -588,46 +610,46 @@ fn start_parser_debugger() {
 
 fn report_error_in_repl(err: &Error, prompt: &str) {
     match err {
-        Error::UnexpectedToken(expected, actual) => {
+        Error::Syntax(SyntaxError::ExpectedToken(expected, actual)) => {
             eprint_repl_loc_cursor(prompt, &actual.loc);
             eprintln!("ERROR: expected {} but got {} '{}'", expected, actual.kind, actual.text);
         }
-        Error::RuleAlreadyExists(name, new_loc, _old_loc) => {
+        Error::Syntax(SyntaxError::ExpectedPrimary(token)) => {
+            eprint_repl_loc_cursor(prompt, &token.loc);
+            eprintln!("ERROR: expected Primary Expression (which is either functor, symbol or variable), but got {}", token.kind)
+        }
+        Error::Syntax(SyntaxError::ExpectedAppliedRule(token)) => {
+            eprint_repl_loc_cursor(prompt, &token.loc);
+            eprintln!("ERROR: expected applied rule argument, but got {}", token.kind)
+        }
+        Error::Syntax(SyntaxError::ExpectedCommand(token)) => {
+            eprint_repl_loc_cursor(prompt, &token.loc);
+            eprintln!("ERROR: expected command, but got {}", token.kind)
+        }
+        Error::Runtime(RuntimeError::RuleAlreadyExists(name, new_loc, _old_loc)) => {
             eprint_repl_loc_cursor(prompt, &new_loc);
             eprintln!("ERROR: redefinition of existing rule {}", name);
         }
-        Error::AlreadyShaping(loc) => {
+        Error::Runtime(RuntimeError::AlreadyShaping(loc)) => {
             eprint_repl_loc_cursor(prompt, &loc);
             eprintln!("ERROR: already shaping an expression. Finish the current shaping with {} first.",
                       TokenKind::Done);
         }
-        Error::NoShapingInPlace(loc) => {
+        Error::Runtime(RuntimeError::NoShapingInPlace(loc)) => {
             eprint_repl_loc_cursor(prompt, &loc);
             eprintln!("ERROR: no shaping in place.");
         }
-        Error::RuleDoesNotExist(name, loc) => {
+        Error::Runtime(RuntimeError::RuleDoesNotExist(name, loc)) => {
             eprint_repl_loc_cursor(prompt, &loc);
             eprintln!("ERROR: rule {} does not exist", name);
         }
-        Error::NoHistory(loc) => {
+        Error::Runtime(RuntimeError::NoHistory(loc)) => {
             eprint_repl_loc_cursor(prompt, &loc);
             eprintln!("ERROR: no history");
         }
-        Error::UnknownStrategy(name, loc) => {
+        Error::Runtime(RuntimeError::UnknownStrategy(name, loc)) => {
             eprint_repl_loc_cursor(prompt, &loc);
             eprintln!("ERROR: unknown rule application strategy '{}'", name);
-        }
-        Error::ExpectedPrimary(token) => {
-            eprint_repl_loc_cursor(prompt, &token.loc);
-            eprintln!("ERROR: expected Primary Expression (which is either functor, symbol or variable), but got {}", token.kind)
-        }
-        Error::ExpectedAppliedRule(token) => {
-            eprint_repl_loc_cursor(prompt, &token.loc);
-            eprintln!("ERROR: expected applied rule argument, but got {}", token.kind)
-        }
-        Error::ExpectedCommand(token) => {
-            eprint_repl_loc_cursor(prompt, &token.loc);
-            eprintln!("ERROR: expected command, but got {}", token.kind)
         }
     }
 }
@@ -639,38 +661,38 @@ fn interpret_file(file_path: &str) {
     while !context.quit && lexer.peek_token().kind != TokenKind::End {
         if let Err(err) = context.process_command(&mut lexer) {
             match err {
-                Error::UnexpectedToken(expected_kinds, actual_token) => {
+                Error::Syntax(SyntaxError::ExpectedToken(expected_kinds, actual_token)) => {
                     eprintln!("{}: ERROR: expected {} but got {} '{}'",
                               actual_token.loc, expected_kinds, actual_token.kind, actual_token.text);
                 }
-                Error::RuleAlreadyExists(name, new_loc, old_loc) => {
+                Error::Syntax(SyntaxError::ExpectedPrimary(token)) => {
+                    eprintln!("{}: ERROR: expected Primary Expression (which is either functor, symbol or variable), but got {}", token.loc, token.kind)
+                }
+                Error::Syntax(SyntaxError::ExpectedAppliedRule(token)) => {
+                    eprintln!("{}: ERROR: expected applied rule argument, but got {}", token.loc, token.kind)
+                }
+                Error::Syntax(SyntaxError::ExpectedCommand(token)) => {
+                    eprintln!("{}: ERROR: expected command, but got {}", token.loc, token.kind)
+                }
+                Error::Runtime(RuntimeError::RuleAlreadyExists(name, new_loc, old_loc)) => {
                     eprintln!("{}: ERROR: redefinition of existing rule {}", new_loc, name);
                     eprintln!("{}: Previous definition is located here", old_loc);
                 }
-                Error::RuleDoesNotExist(name, loc) => {
+                Error::Runtime(RuntimeError::RuleDoesNotExist(name, loc)) => {
                     eprintln!("{}: ERROR: rule {} does not exist", loc, name);
                 }
-                Error::AlreadyShaping(loc) => {
+                Error::Runtime(RuntimeError::AlreadyShaping(loc)) => {
                     eprintln!("{}: ERROR: already shaping an expression. Finish the current shaping with {} first.",
                               loc, TokenKind::Done);
                 }
-                Error::NoShapingInPlace(loc) => {
+                Error::Runtime(RuntimeError::NoShapingInPlace(loc)) => {
                     eprintln!("{}: ERROR: no shaping in place.", loc);
                 }
-                Error::NoHistory(loc) => {
+                Error::Runtime(RuntimeError::NoHistory(loc)) => {
                     eprintln!("{}: ERROR: no history", loc);
                 }
-                Error::UnknownStrategy(name, loc) => {
+                Error::Runtime(RuntimeError::UnknownStrategy(name, loc)) => {
                     eprintln!("{}: ERROR: unknown rule application strategy '{}'", loc, name);
-                }
-                Error::ExpectedPrimary(token) => {
-                    eprintln!("{}: ERROR: expected Primary Expression (which is either functor, symbol or variable), but got {}", token.loc, token.kind)
-                }
-                Error::ExpectedAppliedRule(token) => {
-                    eprintln!("{}: ERROR: expected applied rule argument, but got {}", token.loc, token.kind)
-                }
-                Error::ExpectedCommand(token) => {
-                    eprintln!("{}: ERROR: expected command, but got {}", token.loc, token.kind)
                 }
             }
             std::process::exit(1);
@@ -699,7 +721,7 @@ fn start_repl() {
         let mut lexer = Lexer::new(command.trim().chars(), None);
         if lexer.peek_token().kind != TokenKind::End {
             let result = context.process_command(&mut lexer)
-                .and_then(|()| expect_token_kind(&mut lexer, TokenKind::End));
+                .and_then(|()| expect_token_kind(&mut lexer, TokenKind::End).map_err(|e| e.into()));
             if let Err(err) = result {
                 report_error_in_repl(&err, prompt);
             }
