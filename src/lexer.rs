@@ -17,19 +17,8 @@ impl fmt::Display for Loc {
     }
 }
 
-macro_rules! token_kind_enum {
-    ($($kinds:ident),* $(,)?) => {
-        #[derive(Debug, PartialEq, Clone, Copy, Eq, Hash)]
-        pub enum TokenKind {
-            $($kinds),*
-        }
-
-        #[allow(dead_code)]
-        pub const TOKEN_KIND_ITEMS: [TokenKind; [$(TokenKind::$kinds),*].len()] = [$(TokenKind::$kinds),*];
-    }
-}
-
-token_kind_enum! {
+#[derive(Debug, PartialEq, Clone, Copy, Eq, Hash)]
+pub enum TokenKind {
     Ident,
 
     // Keywords
