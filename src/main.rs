@@ -71,7 +71,7 @@ enum Error {
     NoShapingInPlace(Loc),
     NoHistory(Loc),
     UnknownStrategy(String, Loc),
-    ExpectedFunSymVar(Token),
+    ExpectedPrimary(Token),
     ExpectedAppliedRule(Token),
     ExpectedCommand(Token),
 }
@@ -123,7 +123,7 @@ impl Expr {
                     Self::var_or_sym_based_on_name(&token.text)
                 },
 
-                _ => return Err(Error::ExpectedFunSymVar(token))
+                _ => return Err(Error::ExpectedPrimary(token))
             }
         };
 
@@ -617,7 +617,7 @@ fn report_error_in_repl(err: &Error, prompt: &str) {
             eprint_repl_loc_cursor(prompt, &loc);
             eprintln!("ERROR: unknown rule application strategy '{}'", name);
         }
-        Error::ExpectedFunSymVar(token) => {
+        Error::ExpectedPrimary(token) => {
             eprint_repl_loc_cursor(prompt, &token.loc);
             eprintln!("ERROR: expected Primary Expression (which is either functor, symbol or variable), but got {}", token.kind)
         }
@@ -663,7 +663,7 @@ fn interpret_file(file_path: &str) {
                 Error::UnknownStrategy(name, loc) => {
                     eprintln!("{}: ERROR: unknown rule application strategy '{}'", loc, name);
                 }
-                Error::ExpectedFunSymVar(token) => {
+                Error::ExpectedPrimary(token) => {
                     eprintln!("{}: ERROR: expected Primary Expression (which is either functor, symbol or variable), but got {}", token.loc, token.kind)
                 }
                 Error::ExpectedAppliedRule(token) => {
