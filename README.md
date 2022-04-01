@@ -14,13 +14,18 @@ The Main Idea is being able to define transformation rules of symbolic algebraic
 
 ## Expression
 
-Current expression syntax:
+Current expression syntax can be defined roughly like this:
 
 ```
-<expression> ::= <symbol> | <functor> | <var>
-<var> ::= [A-Z][a-zA-Z0-9]*
-<symbol> ::= [a-z0-9][a-zA-Z0-9]*
-<functor> ::= <expression> ( [<expression>],* )
+<expression> ::= <operator-0>
+<operator-0> ::= <operator-1> ((`+` | `-`) <operator-0>)*
+<operator-1> ::= <operator-2> ((`*` | `/`) <operator-1>)*
+<operator-2> ::= <primary> (`^` <operator-2>)*
+<primary> ::= (`(` <expression> `)`) | <application-chain> | <symbol> | <variable>
+<application-chain> ::= (<symbol> | <variable>) (<fun-args>)+
+<symbol> ::= [a-z0-9][_a-zA-Z0-9]*
+<variable> ::= [_A-Z0-9][_a-zA-Z0-9]*
+<fun-args> ::= `(` (<expression>),* `)`
 ```
 
 ## Rules and Shapes
