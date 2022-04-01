@@ -682,6 +682,7 @@ fn main() {
     }
 }
 
+// TODO: An ability to redefine the rules in REPL
 // TODO: Implement replace! macro
 // TODO: Load rules from files
 // TODO: Custom arbitrary operators like in Haskell
