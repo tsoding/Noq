@@ -574,6 +574,14 @@ impl Context {
             TokenKind::Quit => {
                 self.quit = true;
             }
+            TokenKind::Delete => {
+                let rule_name = expect_token_kind(lexer, TokenKind::Ident)?;
+                if self.rules.contains_key(&rule_name.text) {
+                    self.rules.remove(&rule_name.text);
+                } else {
+                    return Err(RuntimeError::RuleDoesNotExist(rule_name.text, rule_name.loc).into());
+                }
+            }
             _ => return Err(SyntaxError::ExpectedCommand(keyword).into()),
         }
         Ok(())
@@ -774,5 +782,4 @@ fn main() {
 // TODO: Load rules from files
 // TODO: Custom arbitrary operators like in Haskell
 // TODO: Save session to file
-// TODO: An ability to redefine the rules in REPL
 // TODO: Conditional matching of rules. Some sort of ability to combine several rules into one which tries all the provided rules sequentially and pickes the one that matches

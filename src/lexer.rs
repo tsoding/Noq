@@ -29,6 +29,7 @@ pub enum TokenKind {
     Undo,
     Quit,
     Reverse,
+    Delete,
 
     // Special Characters
     OpenParen,
@@ -58,6 +59,7 @@ fn keyword_by_name(text: &str) -> Option<TokenKind> {
         "quit"    => Some(TokenKind::Quit),
         "undo"    => Some(TokenKind::Undo),
         "reverse" => Some(TokenKind::Reverse),
+        "delete"  => Some(TokenKind::Delete),
         _ => None,
     }
 }
@@ -74,6 +76,7 @@ impl fmt::Display for TokenKind {
             Undo => write!(f, "`undo`"),
             Quit => write!(f, "`quit`"),
             Reverse => write!(f, "`reverse`"),
+            Delete => write!(f, "`delete`"),
             OpenParen => write!(f, "open paren"),
             CloseParen => write!(f, "close paren"),
             Comma => write!(f, "comma"),
