@@ -868,8 +868,8 @@ fn main() {
     }
 }
 
-// TODO: Implement replace! macro
 // TODO: Load rules from files
+// TODO: Define shapes as rules
 // TODO: Custom arbitrary operators like in Haskell
 // TODO: Save session to file
 // TODO: Conditional matching of rules. Some sort of ability to combine several rules into one which tries all the provided rules sequentially and pickes the one that matches
