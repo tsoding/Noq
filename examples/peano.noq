@@ -1,0 +1,33 @@
+# Peano numbers
+
+rule 1 1 = s(0)
+rule 2 2 = s(1)
+rule 3 3 = s(2)
+rule 4 4 = s(3)
+
+rule sum_id 0 + A = A
+rule sum    s(A) + B = s(A + B)
+
+shape 2 + 3
+  apply 0 3
+  apply all 2
+  apply all 1
+  apply all sum
+  apply all sum
+  apply all sum_id
+done
+
+rule sub_id A - 0 = A
+rule sub    s(A) - s(B) = A - B
+
+shape 4 - 3
+  apply 0 4
+  apply all 3
+  apply all 2
+  apply all 1
+  apply all sub
+  apply all sub
+  apply all sub
+  apply all sub_id
+done
+
