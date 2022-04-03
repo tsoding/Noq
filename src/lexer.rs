@@ -1,7 +1,7 @@
 use std::fmt;
 use std::iter::Peekable;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub struct Loc {
     pub file_path: Option<String>,
     pub row: usize,
@@ -52,14 +52,14 @@ pub enum TokenKind {
 
 fn keyword_by_name(text: &str) -> Option<TokenKind> {
     match text {
-        "rule"    => Some(TokenKind::Rule),
-        "shape"   => Some(TokenKind::Shape),
-        "apply"   => Some(TokenKind::Apply),
-        "done"    => Some(TokenKind::Done),
-        "quit"    => Some(TokenKind::Quit),
-        "undo"    => Some(TokenKind::Undo),
-        "reverse" => Some(TokenKind::Reverse),
-        "delete"  => Some(TokenKind::Delete),
+        "rule"     => Some(TokenKind::Rule),
+        "shape"    => Some(TokenKind::Shape),
+        "apply"    => Some(TokenKind::Apply),
+        "done"     => Some(TokenKind::Done),
+        "quit"     => Some(TokenKind::Quit),
+        "undo"     => Some(TokenKind::Undo),
+        "reverse"  => Some(TokenKind::Reverse),
+        "delete"   => Some(TokenKind::Delete),
         _ => None,
     }
 }
