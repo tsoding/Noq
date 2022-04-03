@@ -552,7 +552,11 @@ impl Context {
             TokenKind::Reverse => {
                 let rule = self.parse_applied_rule(lexer)?;
                 match rule {
-                    Rule::User{..} => Ok(rule),
+                    Rule::User{head, body, ..} => Ok(Rule::User{
+                        loc: token.loc,
+                        head: body,
+                        body: head,
+                    }),
                     Rule::Replace => Err(RuntimeError::IrreversibleRule(token.loc).into()),
                 }
             }

@@ -7,7 +7,6 @@ rule double_sum   A + A = 2*A
 shape (A + B)^2
   apply all square
   apply all dist_mul_add
-  apply all dist_mul_add
   apply all mul_comm
   apply all dist_mul_add
   apply 0   sum_assoc
