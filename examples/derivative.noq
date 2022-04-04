@@ -6,6 +6,8 @@ rule sum_id 0 + A = A
 rule div_sum_dist (A + B)/C = A/C + B/C
 rule mul_assoc A*(B*C) = (A*B)*C
 rule square A^2 = A*A
+# TODO: replacing `all` with `0` does not work
+# rule lim_def lim(Var, Value, Expr) = apply_rule(0, Var, Value, Expr)
 rule lim_def lim(Var, Value, Expr) = apply_rule(all, Var, Value, Expr)
 rule sum_comm A + B = B + A
 
