@@ -5,6 +5,7 @@ use std::fmt;
 use std::env;
 use std::fs;
 
+#[macro_use]
 mod lexer;
 
 use lexer::*;
@@ -406,8 +407,7 @@ impl Rule {
                 Rule::Replace => {
                     if let Some(bindings) = pattern_match(&expr!(apply_rule(Strategy, Head, Body, Expr)), expr) {
                         let meta_rule = Rule::User {
-                            // TODO: determine the location of the meta rule properly
-                            loc: Loc::default(),
+                            loc: loc_here!(),
                             head: bindings.get("Head").expect("Variable `Head` is present in the meta pattern").clone(),
                             body: bindings.get("Body").expect("Variable `Body` is present in the meta pattern").clone(),
                         };

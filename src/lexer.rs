@@ -8,6 +8,16 @@ pub struct Loc {
     pub col: usize,
 }
 
+macro_rules! loc_here {
+    () => {
+        Loc {
+            file_path: Some(file!().to_string()),
+            row: line!() as usize,
+            col: column!() as usize
+        }
+    }
+}
+
 impl fmt::Display for Loc {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &self.file_path {
