@@ -103,14 +103,6 @@ impl From<RuntimeError> for Error {
     }
 }
 
-fn var_or_sym_based_on_name(name: &str) -> Expr {
-    let x = name.chars().next().expect("Empty names are not allowed. This might be a bug in the lexer.");
-    if x.is_uppercase() || x == '_' {
-        Expr::Var(name.to_string())
-    } else {
-        Expr::Sym(name.to_string())
-    }
-}
 
 enum AppliedRule {
     ByName {
@@ -162,6 +154,16 @@ impl AppliedRule {
 }
 
 impl Expr {
+    pub fn var_or_sym_based_on_name(name: &str) -> Self {
+        let x = name.chars().next().expect("Empty names are not allowed. This might be a bug in the lexer.");
+        if x.is_uppercase() || x == '_' {
+            Self::Var(name.to_string())
+        } else {
+            Self::Sym(name.to_string())
+        }
+    }
+
+
     pub fn human_name(&self) -> &'static str {
         match self {
             Self::Sym(_) => "a symbol",
@@ -205,7 +207,7 @@ impl Expr {
 
                 TokenKind::Ident => {
                     lexer.next_token();
-                    var_or_sym_based_on_name(&token.text)
+                    Self::var_or_sym_based_on_name(&token.text)
                 },
 
                 _ => return Err(SyntaxError::ExpectedPrimary(token))
@@ -273,10 +275,10 @@ macro_rules! fun_args {
 #[allow(unused_macros)]
 macro_rules! expr {
     ($name:ident) => {
-        var_or_sym_based_on_name(stringify!($name))
+        Expr::var_or_sym_based_on_name(stringify!($name))
     };
     ($name:ident($($args:tt)*)) => {
-        Expr::Fun(Box::new(var_or_sym_based_on_name(stringify!($name))), fun_args!($($args)*))
+        Expr::Fun(Box::new(Expr::var_or_sym_based_on_name(stringify!($name))), fun_args!($($args)*))
     };
 }
 
