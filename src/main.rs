@@ -399,19 +399,19 @@ impl Strategy {
 }
 
 impl Rule {
-    fn apply(&self, expr: &Expr, strategy: &mut Strategy) -> Result<Expr, RuntimeError> {
-        fn apply_to_subexprs(rule: &Rule, expr: &Expr, strategy: &mut Strategy) -> Result<(Expr, bool), RuntimeError> {
+    fn apply(&self, expr: &Expr, strategy: &mut Strategy, apply_command_loc: &Loc) -> Result<Expr, RuntimeError> {
+        fn apply_to_subexprs(rule: &Rule, expr: &Expr, strategy: &mut Strategy, apply_command_loc: &Loc) -> Result<(Expr, bool), RuntimeError> {
             use Expr::*;
             match expr {
                 Sym(_) | Var(_) => Ok((expr.clone(), false)),
                 Op(op, lhs, rhs) => {
-                    let (new_lhs, halt) = apply_impl(rule, lhs, strategy)?;
+                    let (new_lhs, halt) = apply_impl(rule, lhs, strategy, apply_command_loc)?;
                     if halt { return Ok((Op(*op, Box::new(new_lhs), rhs.clone()), true)) }
-                    let (new_rhs, halt) = apply_impl(rule, rhs, strategy)?;
+                    let (new_rhs, halt) = apply_impl(rule, rhs, strategy, apply_command_loc)?;
                     Ok((Op(*op, Box::new(new_lhs), Box::new(new_rhs)), halt))
                 },
                 Fun(head, args) => {
-                    let (new_head, halt) = apply_impl(rule, head, strategy)?;
+                    let (new_head, halt) = apply_impl(rule, head, strategy, apply_command_loc)?;
                     if halt {
                         Ok((Fun(Box::new(new_head), args.clone()), true))
                     } else {
@@ -421,7 +421,7 @@ impl Rule {
                             if halt_args {
                                 new_args.push(arg.clone())
                             } else {
-                                let (new_arg, halt) = apply_impl(rule, arg, strategy)?;
+                                let (new_arg, halt) = apply_impl(rule, arg, strategy, apply_command_loc)?;
                                 new_args.push(new_arg);
                                 halt_args = halt;
                             }
@@ -432,7 +432,7 @@ impl Rule {
             }
         }
 
-        fn apply_impl(rule: &Rule, expr: &Expr, strategy: &mut Strategy) -> Result<(Expr, bool), RuntimeError> {
+        fn apply_impl(rule: &Rule, expr: &Expr, strategy: &mut Strategy, apply_command_loc: &Loc) -> Result<(Expr, bool), RuntimeError> {
             match rule {
                 Rule::User{loc: _, head, body} => {
                     if let Some(bindings) = pattern_match(head, expr) {
@@ -443,11 +443,11 @@ impl Rule {
                         };
                         match resolution.state {
                             State::Bail => Ok((new_expr, false)),
-                            State::Cont => apply_to_subexprs(rule, &new_expr, strategy),
+                            State::Cont => apply_to_subexprs(rule, &new_expr, strategy, apply_command_loc),
                             State::Halt => Ok((new_expr, true)),
                         }
                     } else {
-                        apply_to_subexprs(rule, expr, strategy)
+                        apply_to_subexprs(rule, expr, strategy, apply_command_loc)
                     }
                 },
 
@@ -462,22 +462,20 @@ impl Rule {
                         if let Expr::Sym(meta_strategy_name) = meta_strategy {
                             let meta_expr = bindings.get("Expr").expect("Variable `Expr` is present in the meta pattern");
                             let result = match Strategy::by_name(meta_strategy_name) {
-                                Some(mut strategy) => meta_rule.apply(&meta_expr, &mut strategy),
-                                // TODO: report the location of the strategy properly
-                                // This may require finally adding location to Expr
-                                None => Err(RuntimeError::UnknownStrategy(meta_strategy_name.to_string(), Loc::default()))
+                                Some(mut strategy) => meta_rule.apply(&meta_expr, &mut strategy, apply_command_loc),
+                                None => Err(RuntimeError::UnknownStrategy(meta_strategy_name.to_string(), apply_command_loc.clone()))
                             };
                             Ok((result?, false))
                         } else {
                             todo!("Report runtime error about `Strategy` being expected to be a symbol");
                         }
                     } else {
-                        apply_to_subexprs(rule, expr, strategy)
+                        apply_to_subexprs(rule, expr, strategy, apply_command_loc)
                     }
                 },
             }
         }
-        Ok((apply_impl(self, expr, strategy)?).0)
+        Ok((apply_impl(self, expr, strategy, apply_command_loc)?).0)
     }
 }
 
@@ -683,7 +681,7 @@ impl Context {
 
                     // todo!("Throw an error if not a single match for the rule was found")
                     let new_expr = match Strategy::by_name(&strategy_name) {
-                        Some(mut strategy) => rule.apply(&expr, &mut strategy)?,
+                        Some(mut strategy) => rule.apply(&expr, &mut strategy, &loc)?,
                         None => return Err(RuntimeError::UnknownStrategy(strategy_name, loc).into())
                     };
                     println!(" => {}", &new_expr);
