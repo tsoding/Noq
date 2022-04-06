@@ -126,7 +126,7 @@ impl<Chars: Iterator<Item=char>> Lexer<Chars> {
             chars: chars.peekable(),
             peeked: None,
             exhausted: false,
-            file_path: file_path,
+            file_path,
             lnum: 0,
             bol: 0,
             cnum: 0,
@@ -151,10 +151,10 @@ impl<Chars: Iterator<Item=char>> Lexer<Chars> {
     }
 
     fn drop_line(&mut self) {
-        while let Some(_) = self.chars.next_if(|x| *x != '\n') {
+        while self.chars.next_if(|x| *x != '\n').is_some() {
             self.cnum += 1
         }
-        if let Some(_) = self.chars.next_if(|x| *x == '\n') {
+        if self.chars.next_if(|x| *x == '\n').is_some() {
             self.cnum += 1;
             self.lnum += 1;
             self.bol = self.cnum
@@ -162,7 +162,7 @@ impl<Chars: Iterator<Item=char>> Lexer<Chars> {
     }
 
     fn trim_whitespaces(&mut self) {
-        while let Some(_) = self.chars.next_if(|x| x.is_whitespace() && *x != '\n') {
+        while self.chars.next_if(|x| x.is_whitespace() && *x != '\n').is_some() {
             self.cnum += 1
         }
     }
