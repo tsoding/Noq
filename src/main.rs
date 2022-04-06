@@ -64,6 +64,7 @@ enum Expr {
 }
 
 #[derive(Debug)]
+/// An error that happens during parsing the Noq source code
 enum SyntaxError {
     ExpectedToken(TokenKind, Token),
     ExpectedPrimary(Token),
@@ -72,6 +73,7 @@ enum SyntaxError {
 }
 
 #[derive(Debug)]
+/// An error that happens during execution of the Noq source code
 enum RuntimeError {
     RuleAlreadyExists(String, Loc, Option<Loc>),
     RuleDoesNotExist(String, Loc),
@@ -109,8 +111,56 @@ fn var_or_sym_based_on_name(name: &str) -> Expr {
     }
 }
 
-impl Expr {
+enum AppliedRule {
+    ByName {
+        loc: Loc,
+        name: String,
+        reversed: bool,
+    },
+    Anonymous {
+        loc: Loc,
+        head: Expr,
+        body: Expr,
+    },
+}
 
+impl AppliedRule {
+    fn reversed(self) -> Self {
+        match self {
+            Self::ByName{loc, reversed, name} => Self::ByName {
+                loc,
+                reversed: !reversed,
+                name
+            },
+            Self::Anonymous{loc, head, body} => Self::Anonymous {
+                loc,
+                head: body,
+                body: head,
+            },
+        }
+    }
+
+    fn parse(lexer: &mut Lexer<impl Iterator<Item=char>>) -> Result<Self, SyntaxError> {
+        let token = lexer.next_token();
+        match token.kind {
+            TokenKind::Reverse => Ok(Self::parse(lexer)?.reversed()),
+            TokenKind::Rule => {
+                let head = Expr::parse(lexer)?;
+                expect_token_kind(lexer, TokenKind::Equals)?;
+                let body = Expr::parse(lexer)?;
+                Ok(AppliedRule::Anonymous{ loc: token.loc, head, body })
+            },
+            TokenKind::Ident => Ok(AppliedRule::ByName {
+                loc: token.loc,
+                name: token.text,
+                reversed: false,
+            }),
+            _ => Err(SyntaxError::ExpectedAppliedRule(token).into())
+        }
+    }
+}
+
+impl Expr {
     fn parse_fun_args(lexer: &mut Lexer<impl Iterator<Item=char>>) -> Result<Vec<Self>, SyntaxError> {
         use TokenKind::*;
         let mut args = Vec::new();
@@ -519,6 +569,58 @@ fn pattern_match(pattern: &Expr, value: &Expr) -> Option<Bindings> {
     }
 }
 
+enum Command {
+    DefineRule(Loc, String, Rule),
+    StartShaping(Loc, Expr),
+    ApplyRule {
+        loc: Loc,
+        strategy_name: String,
+        applied_rule: AppliedRule,
+    },
+    FinishShaping(Loc),
+    UndoRule(Loc),
+    Quit,
+    DeleteRule(Loc, String),
+}
+
+impl Command {
+    fn parse(lexer: &mut Lexer<impl Iterator<Item=char>>) -> Result<Command, SyntaxError> {
+        let keyword = lexer.next_token();
+        match keyword.kind {
+            TokenKind::Rule => {
+                let name = expect_token_kind(lexer, TokenKind::Ident)?;
+                let head = Expr::parse(lexer)?;
+                expect_token_kind(lexer, TokenKind::Equals)?;
+                let body = Expr::parse(lexer)?;
+                Ok(Command::DefineRule(
+                    keyword.loc.clone(),
+                    name.text,
+                    Rule::User {
+                        loc: keyword.loc.clone(),
+                        head,
+                        body,
+                    }
+                ))
+            }
+            TokenKind::Shape => Ok(Command::StartShaping(keyword.loc, Expr::parse(lexer)?)),
+            TokenKind::Apply => {
+                let strategy_name = expect_token_kind(lexer, TokenKind::Ident)?.text;
+                let applied_rule = AppliedRule::parse(lexer)?;
+                Ok(Command::ApplyRule {
+                    loc: keyword.loc,
+                    strategy_name,
+                    applied_rule,
+                })
+            }
+            TokenKind::Done => Ok(Command::FinishShaping(keyword.loc)),
+            TokenKind::Undo => Ok(Command::UndoRule(keyword.loc)),
+            TokenKind::Quit => Ok(Command::Quit),
+            TokenKind::Delete => Ok(Command::DeleteRule(keyword.loc, expect_token_kind(lexer, TokenKind::Ident)?.text)),
+            _ => Err(SyntaxError::ExpectedCommand(keyword).into()),
+        }
+    }
+}
+
 struct Context {
     rules: HashMap<String, Rule>,
     current_expr: Option<Expr>,
@@ -538,122 +640,90 @@ impl Context {
         }
     }
 
-    fn parse_applied_rule(&self, lexer: &mut Lexer<impl Iterator<Item=char>>) -> Result<Rule, Error> {
-        let token = lexer.next_token();
-        match token.kind {
-            TokenKind::Reverse => {
-                let rule = self.parse_applied_rule(lexer)?;
-                match rule {
-                    Rule::User{head, body, ..} => Ok(Rule::User{
-                        loc: token.loc,
-                        head: body,
-                        body: head,
-                    }),
-                    Rule::Replace => Err(RuntimeError::IrreversibleRule(token.loc).into()),
-                }
-            }
-
-            TokenKind::Rule => {
-                let head = Expr::parse(lexer)?;
-                expect_token_kind(lexer, TokenKind::Equals)?;
-                let body = Expr::parse(lexer)?;
-                Ok(Rule::User { loc: token.loc, head, body })
-            }
-
-            TokenKind::Ident => {
-                if let Some(rule) = self.rules.get(&token.text) {
-                    Ok(rule.clone())
+    fn materialize_applied_rule(&self, applied_rule: AppliedRule) -> Result<Rule, RuntimeError> {
+        match applied_rule {
+            AppliedRule::ByName {loc, name, reversed} => match self.rules.get(&name) {
+                Some(rule) => if reversed {
+                    match rule.clone() {
+                        Rule::User {loc, head, body} => Ok(Rule::User{loc, head: body, body: head}),
+                        Rule::Replace => Err(RuntimeError::IrreversibleRule(loc))
+                    }
                 } else {
-                    Err(RuntimeError::RuleDoesNotExist(token.text, token.loc).into())
+                    Ok(rule.clone())
                 }
-            }
 
-            _ => Err(SyntaxError::ExpectedAppliedRule(token).into())
+                None => Err(RuntimeError::RuleDoesNotExist(name, loc))
+            }
+            AppliedRule::Anonymous {loc, head, body} => Ok(Rule::User {loc, head, body}),
         }
     }
 
-    fn process_command(&mut self, lexer: &mut Lexer<impl Iterator<Item=char>>) -> Result<(), Error> {
-        let keyword = lexer.next_token();
-        match keyword.kind {
-            TokenKind::Rule => {
-                let name = expect_token_kind(lexer, TokenKind::Ident)?;
-                if let Some(existing_rule) = self.rules.get(&name.text) {
+    fn process_command(&mut self, command: Command) -> Result<(), RuntimeError> {
+        match command {
+            Command::DefineRule(rule_loc, rule_name, rule) => {
+                if let Some(existing_rule) = self.rules.get(&rule_name) {
                     let loc = match existing_rule {
                         Rule::User{loc, ..} => Some(loc),
                         Rule::Replace => None,
                     };
-                    return Err(RuntimeError::RuleAlreadyExists(name.text, name.loc, loc.cloned()).into())
+                    return Err(RuntimeError::RuleAlreadyExists(rule_name, rule_loc, loc.cloned()).into())
                 }
-                let head = Expr::parse(lexer)?;
-                expect_token_kind(lexer, TokenKind::Equals)?;
-                let body = Expr::parse(lexer)?;
-                let rule = Rule::User {
-                    loc: keyword.loc,
-                    head,
-                    body,
-                };
-                self.rules.insert(name.text, rule);
+                self.rules.insert(rule_name, rule);
             }
-            TokenKind::Shape => {
+            Command::StartShaping(loc, expr) => {
                 if let Some(_) = self.current_expr {
-                    return Err(RuntimeError::AlreadyShaping(keyword.loc).into())
+                    return Err(RuntimeError::AlreadyShaping(loc).into())
                 }
-
-                let expr = Expr::parse(lexer)?;
                 println!(" => {}", &expr);
                 self.current_expr = Some(expr);
             },
-            TokenKind::Apply => {
+            Command::ApplyRule {loc, strategy_name, applied_rule} => {
                 if let Some(expr) = &self.current_expr {
-                    let strategy_name = expect_token_kind(lexer, TokenKind::Ident)?;
+                    let rule = self.materialize_applied_rule(applied_rule)?;
 
-                    let rule = self.parse_applied_rule(lexer)?;
                     // todo!("Throw an error if not a single match for the rule was found")
-
-                    let new_expr = match Strategy::by_name(&strategy_name.text) {
+                    let new_expr = match Strategy::by_name(&strategy_name) {
                         Some(mut strategy) => rule.apply(&expr, &mut strategy)?,
-                        None => return Err(RuntimeError::UnknownStrategy(strategy_name.text, strategy_name.loc).into())
+                        None => return Err(RuntimeError::UnknownStrategy(strategy_name, loc).into())
                     };
                     println!(" => {}", &new_expr);
                     self.shaping_history.push(
                         self.current_expr.replace(new_expr).expect("current_expr must have something")
                     );
                 } else {
-                    return Err(RuntimeError::NoShapingInPlace(keyword.loc).into());
+                    return Err(RuntimeError::NoShapingInPlace(loc).into());
                 }
             }
-            TokenKind::Done => {
+            Command::FinishShaping(loc) => {
                 if let Some(_) = &self.current_expr {
                     self.current_expr = None;
                     self.shaping_history.clear();
                 } else {
-                    return Err(RuntimeError::NoShapingInPlace(keyword.loc).into())
+                    return Err(RuntimeError::NoShapingInPlace(loc).into())
                 }
             }
-            TokenKind::Undo => {
+            Command::UndoRule(loc) => {
                 if let Some(_) = &self.current_expr {
                     if let Some(previous_expr) = self.shaping_history.pop() {
                         println!(" => {}", &previous_expr);
                         self.current_expr.replace(previous_expr);
                     } else {
-                        return Err(RuntimeError::NoHistory(keyword.loc).into())
+                        return Err(RuntimeError::NoHistory(loc).into())
                     }
                 } else {
-                    return Err(RuntimeError::NoShapingInPlace(keyword.loc).into())
+                    return Err(RuntimeError::NoShapingInPlace(loc).into())
                 }
             }
-            TokenKind::Quit => {
+            Command::Quit => {
                 self.quit = true;
             }
-            TokenKind::Delete => {
-                let rule_name = expect_token_kind(lexer, TokenKind::Ident)?;
-                if self.rules.contains_key(&rule_name.text) {
-                    self.rules.remove(&rule_name.text);
+            Command::DeleteRule(loc, name) => {
+                if self.rules.contains_key(&name) {
+                    self.rules.remove(&name);
                 } else {
-                    return Err(RuntimeError::RuleDoesNotExist(rule_name.text, rule_name.loc).into());
+                    return Err(RuntimeError::RuleDoesNotExist(name, loc).into());
                 }
             }
-            _ => return Err(SyntaxError::ExpectedCommand(keyword).into()),
         }
         Ok(())
     }
@@ -737,12 +807,18 @@ fn report_error_in_repl(err: &Error, prompt: &str) {
     }
 }
 
+fn parse_and_process_command(context: &mut Context, lexer: &mut Lexer<impl Iterator<Item=char>>) -> Result<(), Error> {
+    let command = Command::parse(lexer)?;
+    context.process_command(command)?;
+    Ok(())
+}
+
 fn interpret_file(file_path: &str) {
     let mut context = Context::new();
     let source = fs::read_to_string(&file_path).unwrap();
     let mut lexer = Lexer::new(source.chars(), Some(file_path.to_string()));
     while !context.quit && lexer.peek_token().kind != TokenKind::End {
-        if let Err(err) = context.process_command(&mut lexer) {
+        if let Err(err) = parse_and_process_command(&mut context, &mut lexer) {
             match err {
                 Error::Syntax(SyntaxError::ExpectedToken(expected_kinds, actual_token)) => {
                     eprintln!("{}: ERROR: expected {} but got {} '{}'",
@@ -808,7 +884,7 @@ fn start_repl() {
         stdin().read_line(&mut command).unwrap();
         let mut lexer = Lexer::new(command.trim().chars(), None);
         if lexer.peek_token().kind != TokenKind::End {
-            let result = context.process_command(&mut lexer)
+            let result = parse_and_process_command(&mut context, &mut lexer)
                 .and_then(|()| expect_token_kind(&mut lexer, TokenKind::End).map_err(|e| e.into()));
             if let Err(err) = result {
                 report_error_in_repl(&err, prompt);
