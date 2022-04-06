@@ -82,6 +82,7 @@ enum RuntimeError {
     NoHistory(Loc),
     UnknownStrategy(String, Loc),
     IrreversibleRule(Loc),
+    StrategyIsNotSym(Expr, Loc),
 }
 
 #[derive(Debug)]
@@ -161,6 +162,15 @@ impl AppliedRule {
 }
 
 impl Expr {
+    pub fn human_name(&self) -> &'static str {
+        match self {
+            Self::Sym(_) => "a symbol",
+            Self::Var(_) => "a variable",
+            Self::Fun(_, _) => "a functor",
+            Self::Op(_, _, _) => "a binary operator",
+        }
+    }
+
     fn parse_fun_args(lexer: &mut Lexer<impl Iterator<Item=char>>) -> Result<Vec<Self>, SyntaxError> {
         use TokenKind::*;
         let mut args = Vec::new();
@@ -467,7 +477,7 @@ impl Rule {
                             };
                             Ok((result?, false))
                         } else {
-                            todo!("Report runtime error about `Strategy` being expected to be a symbol");
+                            Err(RuntimeError::StrategyIsNotSym(meta_strategy.clone(), apply_command_loc.clone()))
                         }
                     } else {
                         apply_to_subexprs(rule, expr, strategy, apply_command_loc)
@@ -802,6 +812,10 @@ fn report_error_in_repl(err: &Error, prompt: &str) {
             eprint_repl_loc_cursor(prompt, &loc);
             eprintln!("ERROR: irreversible rule");
         }
+        Error::Runtime(RuntimeError::StrategyIsNotSym(expr, loc)) => {
+            eprint_repl_loc_cursor(prompt, &loc);
+            eprintln!("ERROR: strategy must be a symbol but got {} {}", expr.human_name(), &expr);
+        }
     }
 }
 
@@ -855,6 +869,9 @@ fn interpret_file(file_path: &str) {
                 }
                 Error::Runtime(RuntimeError::IrreversibleRule(loc)) => {
                     eprintln!("{}: ERROR: irreversible rule", loc);
+                }
+                Error::Runtime(RuntimeError::StrategyIsNotSym(expr, loc)) => {
+                    eprintln!("{}: ERROR: strategy must be a symbol but got {} `{}`", loc, expr.human_name(), &expr);
                 }
             }
             std::process::exit(1);
