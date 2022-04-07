@@ -156,6 +156,37 @@ impl AppliedRule {
 }
 
 impl Expr {
+    fn substitute(&self, bindings: &Bindings) -> Self {
+        match self {
+            Self::Sym(_) => self.clone(),
+
+            Self::Var(name) => {
+                if let Some(value) = bindings.get(name) {
+                    value.clone()
+                } else {
+                    self.clone()
+                }
+            }
+
+            Self::Op(op, lhs, rhs) => {
+                Self::Op(
+                    *op,
+                    Box::new(lhs.substitute(bindings)),
+                    Box::new(rhs.substitute(bindings))
+                )
+            },
+
+            Self::Fun(head, args) => {
+                let new_head = head.substitute(bindings);
+                let mut new_args = Vec::new();
+                for arg in args {
+                    new_args.push(arg.substitute(bindings))
+                }
+                Self::Fun(Box::new(new_head), new_args)
+            }
+        }
+    }
+
     pub fn var_or_sym_based_on_name(name: &str) -> Self {
         let x = name.chars().next().expect("Empty names are not allowed. This might be a bug in the lexer.");
         if x.is_uppercase() || x == '_' {
@@ -446,7 +477,7 @@ impl Rule {
                         let resolution = strategy.matched(*match_count);
                         *match_count += 1;
                         let new_expr = match resolution.action {
-                            Action::Apply => substitute_bindings(&bindings, body),
+                            Action::Apply => body.substitute(&bindings),
                             Action::Skip => expr.clone(),
                         };
                         match resolution.state {
@@ -490,38 +521,6 @@ impl Rule {
             Ok(result)
         } else {
             Err(RuntimeError::NoMatch(apply_command_loc.clone()))
-        }
-    }
-}
-
-fn substitute_bindings(bindings: &Bindings, expr: &Expr) -> Expr {
-    use Expr::*;
-    match expr {
-        Sym(_) => expr.clone(),
-
-        Var(name) => {
-            if let Some(value) = bindings.get(name) {
-                value.clone()
-            } else {
-                expr.clone()
-            }
-        }
-
-        Op(op, lhs, rhs) => {
-            Op(
-                *op,
-                Box::new(substitute_bindings(bindings, lhs)),
-                Box::new(substitute_bindings(bindings, rhs))
-            )
-        },
-
-        Fun(head, args) => {
-            let new_head = substitute_bindings(bindings, head);
-            let mut new_args = Vec::new();
-            for arg in args {
-                new_args.push(substitute_bindings(bindings, arg))
-            }
-            Fun(Box::new(new_head), new_args)
         }
     }
 }
