@@ -359,27 +359,20 @@ enum Rule {
 enum Strategy {
     All,
     Deep,
-    Nth {
-        current: usize,
-        target: usize,
-    }
+    Nth(usize),
 }
 
 impl Strategy {
     fn by_name(name: &str) -> Option<Self> {
         match name {
             "all"   => Some(Self::All),
-            "first" => Some(Self::nth(0)),
+            "first" => Some(Self::Nth(0)),
             "deep"  => Some(Self::Deep),
-            x       => x.parse().map(Self::nth).ok()
+            x       => x.parse().map(Self::Nth).ok()
         }
     }
 
-    fn nth(target: usize) -> Self {
-        Self::Nth {current:0, target}
-    }
-
-    fn matched(&mut self) -> Resolution {
+    fn matched(&self, index: usize) -> Resolution {
         match self {
             Self::All => Resolution {
                 action: Action::Apply,
@@ -392,18 +385,17 @@ impl Strategy {
             },
 
             #[allow(clippy::comparison_chain)]
-            Self::Nth {current, target} => if current == target {
+            Self::Nth(target) => if index == *target {
                 Resolution {
                     action: Action::Apply,
                     state: State::Halt,
                 }
-            } else if current > target {
+            } else if index > *target {
                 Resolution {
                     action: Action::Skip,
                     state: State::Halt,
                 }
             } else {
-                *current += 1;
                 Resolution {
                     action: Action::Skip,
                     state: State::Cont,
@@ -414,8 +406,8 @@ impl Strategy {
 }
 
 impl Rule {
-    fn apply(&self, expr: &Expr, strategy: &mut Strategy, apply_command_loc: &Loc) -> Result<Expr, RuntimeError> {
-        fn apply_to_subexprs(rule: &Rule, expr: &Expr, strategy: &mut Strategy, apply_command_loc: &Loc, match_count: &mut usize) -> Result<(Expr, bool), RuntimeError> {
+    fn apply(&self, expr: &Expr, strategy: &Strategy, apply_command_loc: &Loc) -> Result<Expr, RuntimeError> {
+        fn apply_to_subexprs(rule: &Rule, expr: &Expr, strategy: &Strategy, apply_command_loc: &Loc, match_count: &mut usize) -> Result<(Expr, bool), RuntimeError> {
             use Expr::*;
             match expr {
                 Sym(_) | Var(_) => Ok((expr.clone(), false)),
@@ -447,12 +439,12 @@ impl Rule {
             }
         }
 
-        fn apply_impl(rule: &Rule, expr: &Expr, strategy: &mut Strategy, apply_command_loc: &Loc, match_count: &mut usize) -> Result<(Expr, bool), RuntimeError> {
+        fn apply_impl(rule: &Rule, expr: &Expr, strategy: &Strategy, apply_command_loc: &Loc, match_count: &mut usize) -> Result<(Expr, bool), RuntimeError> {
             match rule {
                 Rule::User{loc: _, head, body} => {
                     if let Some(bindings) = pattern_match(head, expr) {
+                        let resolution = strategy.matched(*match_count);
                         *match_count += 1;
-                        let resolution = strategy.matched();
                         let new_expr = match resolution.action {
                             Action::Apply => substitute_bindings(&bindings, body),
                             Action::Skip => expr.clone(),
@@ -479,7 +471,7 @@ impl Rule {
                         if let Expr::Sym(meta_strategy_name) = meta_strategy {
                             let meta_expr = bindings.get("Expr").expect("Variable `Expr` is present in the meta pattern");
                             let result = match Strategy::by_name(meta_strategy_name) {
-                                Some(mut strategy) => meta_rule.apply(meta_expr, &mut strategy, apply_command_loc),
+                                Some(strategy) => meta_rule.apply(meta_expr, &strategy, apply_command_loc),
                                 None => Err(RuntimeError::UnknownStrategy(meta_strategy_name.to_string(), apply_command_loc.clone()))
                             };
                             Ok((result?, false))
@@ -703,7 +695,7 @@ impl Context {
                     let rule = self.materialize_applied_rule(applied_rule)?;
 
                     let new_expr = match Strategy::by_name(&strategy_name) {
-                        Some(mut strategy) => rule.apply(expr, &mut strategy, &loc)?,
+                        Some(strategy) => rule.apply(expr, &strategy, &loc)?,
                         None => return Err(RuntimeError::UnknownStrategy(strategy_name, loc))
                     };
                     println!(" => {}", &new_expr);
