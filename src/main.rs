@@ -777,59 +777,58 @@ fn start_parser_debugger() {
 
 fn report_error_in_repl(err: &Error, prompt: &str) {
     match err {
-        // TODO: using eprint_repl_loc_cursor makes sense only for SyntaxError-s
-        Error::Syntax(SyntaxError::ExpectedToken(expected, actual)) => {
-            eprint_repl_loc_cursor(prompt, &actual.loc);
-            eprintln!("ERROR: expected {} but got {} '{}'", expected, actual.kind, actual.text);
+        Error::Syntax(err) => match err {
+            SyntaxError::ExpectedToken(expected, actual) => {
+                eprint_repl_loc_cursor(prompt, &actual.loc);
+                eprintln!("ERROR: expected {} but got {} '{}'", expected, actual.kind, actual.text);
+            }
+            SyntaxError::ExpectedPrimary(token) => {
+                eprint_repl_loc_cursor(prompt, &token.loc);
+                eprintln!("ERROR: expected Primary Expression (which is either functor, symbol or variable), but got {}", token.kind)
+            }
+            SyntaxError::ExpectedAppliedRule(token) => {
+                eprint_repl_loc_cursor(prompt, &token.loc);
+                eprintln!("ERROR: expected applied rule argument, but got {}", token.kind)
+            }
+            SyntaxError::ExpectedCommand(token) => {
+                eprint_repl_loc_cursor(prompt, &token.loc);
+                eprintln!("ERROR: expected command, but got {}", token.kind)
+            }
         }
-        Error::Syntax(SyntaxError::ExpectedPrimary(token)) => {
-            eprint_repl_loc_cursor(prompt, &token.loc);
-            eprintln!("ERROR: expected Primary Expression (which is either functor, symbol or variable), but got {}", token.kind)
-        }
-        Error::Syntax(SyntaxError::ExpectedAppliedRule(token)) => {
-            eprint_repl_loc_cursor(prompt, &token.loc);
-            eprintln!("ERROR: expected applied rule argument, but got {}", token.kind)
-        }
-        Error::Syntax(SyntaxError::ExpectedCommand(token)) => {
-            eprint_repl_loc_cursor(prompt, &token.loc);
-            eprintln!("ERROR: expected command, but got {}", token.kind)
-        }
-        Error::Runtime(RuntimeError::RuleAlreadyExists(name, new_loc, _old_loc)) => {
-            eprint_repl_loc_cursor(prompt, new_loc);
-            eprintln!("ERROR: redefinition of existing rule {}", name);
-        }
-        Error::Runtime(RuntimeError::AlreadyShaping(loc)) => {
-            eprint_repl_loc_cursor(prompt, loc);
-            eprintln!("ERROR: already shaping an expression. Finish the current shaping with {} first.",
-                      TokenKind::Done);
-        }
-        Error::Runtime(RuntimeError::NoShapingInPlace(loc)) => {
-            eprint_repl_loc_cursor(prompt, loc);
-            eprintln!("ERROR: no shaping in place.");
-        }
-        Error::Runtime(RuntimeError::RuleDoesNotExist(name, loc)) => {
-            eprint_repl_loc_cursor(prompt, loc);
-            eprintln!("ERROR: rule {} does not exist", name);
-        }
-        Error::Runtime(RuntimeError::NoHistory(loc)) => {
-            eprint_repl_loc_cursor(prompt, loc);
-            eprintln!("ERROR: no history");
-        }
-        Error::Runtime(RuntimeError::UnknownStrategy(name, loc)) => {
-            eprint_repl_loc_cursor(prompt, loc);
-            eprintln!("ERROR: unknown rule application strategy '{}'", name);
-        }
-        Error::Runtime(RuntimeError::IrreversibleRule(loc)) => {
-            eprint_repl_loc_cursor(prompt, loc);
-            eprintln!("ERROR: irreversible rule");
-        }
-        Error::Runtime(RuntimeError::StrategyIsNotSym(expr, loc)) => {
-            eprint_repl_loc_cursor(prompt, loc);
-            eprintln!("ERROR: strategy must be a symbol but got {} {}", expr.human_name(), &expr);
-        }
-        Error::Runtime(RuntimeError::NoMatch(loc)) => {
-            eprint_repl_loc_cursor(prompt, loc);
-            eprintln!("ERROR: no match found");
+
+        Error::Runtime(err) => match err {
+            RuntimeError::RuleAlreadyExists(name, _new_loc, old_loc) => {
+                eprintln!("ERROR: redefinition of existing rule {}", name);
+                if let Some(loc) = old_loc {
+                    if loc.file_path.is_some() {
+                        eprintln!("{}: Previous definition is located here", loc);
+                    }
+                }
+            }
+            RuntimeError::AlreadyShaping(_loc) => {
+                eprintln!("ERROR: already shaping an expression. Finish the current shaping with {} first.", TokenKind::Done);
+            }
+            RuntimeError::NoShapingInPlace(_loc) => {
+                eprintln!("ERROR: no shaping in place.");
+            }
+            RuntimeError::RuleDoesNotExist(name, _loc) => {
+                eprintln!("ERROR: rule {} does not exist", name);
+            }
+            RuntimeError::NoHistory(_loc) => {
+                eprintln!("ERROR: no history");
+            }
+            RuntimeError::UnknownStrategy(name, _loc) => {
+                eprintln!("ERROR: unknown rule application strategy '{}'", name);
+            }
+            RuntimeError::IrreversibleRule(_loc) => {
+                eprintln!("ERROR: irreversible rule");
+            }
+            RuntimeError::StrategyIsNotSym(expr, _loc) => {
+                eprintln!("ERROR: strategy must be a symbol but got {} {}", expr.human_name(), &expr);
+            }
+            RuntimeError::NoMatch(_loc) => {
+                eprintln!("ERROR: no match found");
+            }
         }
     }
 }
