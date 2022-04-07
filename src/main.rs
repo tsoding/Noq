@@ -83,6 +83,7 @@ enum RuntimeError {
     UnknownStrategy(String, Loc),
     IrreversibleRule(Loc),
     StrategyIsNotSym(Expr, Loc),
+    NoMatch(Loc),
 }
 
 #[derive(Debug)]
@@ -412,18 +413,18 @@ impl Strategy {
 
 impl Rule {
     fn apply(&self, expr: &Expr, strategy: &mut Strategy, apply_command_loc: &Loc) -> Result<Expr, RuntimeError> {
-        fn apply_to_subexprs(rule: &Rule, expr: &Expr, strategy: &mut Strategy, apply_command_loc: &Loc) -> Result<(Expr, bool), RuntimeError> {
+        fn apply_to_subexprs(rule: &Rule, expr: &Expr, strategy: &mut Strategy, apply_command_loc: &Loc, match_count: &mut usize) -> Result<(Expr, bool), RuntimeError> {
             use Expr::*;
             match expr {
                 Sym(_) | Var(_) => Ok((expr.clone(), false)),
                 Op(op, lhs, rhs) => {
-                    let (new_lhs, halt) = apply_impl(rule, lhs, strategy, apply_command_loc)?;
+                    let (new_lhs, halt) = apply_impl(rule, lhs, strategy, apply_command_loc, match_count)?;
                     if halt { return Ok((Op(*op, Box::new(new_lhs), rhs.clone()), true)) }
-                    let (new_rhs, halt) = apply_impl(rule, rhs, strategy, apply_command_loc)?;
+                    let (new_rhs, halt) = apply_impl(rule, rhs, strategy, apply_command_loc, match_count)?;
                     Ok((Op(*op, Box::new(new_lhs), Box::new(new_rhs)), halt))
                 },
                 Fun(head, args) => {
-                    let (new_head, halt) = apply_impl(rule, head, strategy, apply_command_loc)?;
+                    let (new_head, halt) = apply_impl(rule, head, strategy, apply_command_loc, match_count)?;
                     if halt {
                         Ok((Fun(Box::new(new_head), args.clone()), true))
                     } else {
@@ -433,7 +434,7 @@ impl Rule {
                             if halt_args {
                                 new_args.push(arg.clone())
                             } else {
-                                let (new_arg, halt) = apply_impl(rule, arg, strategy, apply_command_loc)?;
+                                let (new_arg, halt) = apply_impl(rule, arg, strategy, apply_command_loc, match_count)?;
                                 new_args.push(new_arg);
                                 halt_args = halt;
                             }
@@ -444,10 +445,11 @@ impl Rule {
             }
         }
 
-        fn apply_impl(rule: &Rule, expr: &Expr, strategy: &mut Strategy, apply_command_loc: &Loc) -> Result<(Expr, bool), RuntimeError> {
+        fn apply_impl(rule: &Rule, expr: &Expr, strategy: &mut Strategy, apply_command_loc: &Loc, match_count: &mut usize) -> Result<(Expr, bool), RuntimeError> {
             match rule {
                 Rule::User{loc: _, head, body} => {
                     if let Some(bindings) = pattern_match(head, expr) {
+                        *match_count += 1;
                         let resolution = strategy.matched();
                         let new_expr = match resolution.action {
                             Action::Apply => substitute_bindings(&bindings, body),
@@ -455,16 +457,17 @@ impl Rule {
                         };
                         match resolution.state {
                             State::Bail => Ok((new_expr, false)),
-                            State::Cont => apply_to_subexprs(rule, &new_expr, strategy, apply_command_loc),
+                            State::Cont => apply_to_subexprs(rule, &new_expr, strategy, apply_command_loc, match_count),
                             State::Halt => Ok((new_expr, true)),
                         }
                     } else {
-                        apply_to_subexprs(rule, expr, strategy, apply_command_loc)
+                        apply_to_subexprs(rule, expr, strategy, apply_command_loc, match_count)
                     }
                 },
 
                 Rule::Replace => {
                     if let Some(bindings) = pattern_match(&expr!(apply_rule(Strategy, Head, Body, Expr)), expr) {
+                        *match_count += 1;
                         let meta_rule = Rule::User {
                             loc: loc_here!(),
                             head: bindings.get("Head").expect("Variable `Head` is present in the meta pattern").clone(),
@@ -482,12 +485,18 @@ impl Rule {
                             Err(RuntimeError::StrategyIsNotSym(meta_strategy.clone(), apply_command_loc.clone()))
                         }
                     } else {
-                        apply_to_subexprs(rule, expr, strategy, apply_command_loc)
+                        apply_to_subexprs(rule, expr, strategy, apply_command_loc, match_count)
                     }
                 },
             }
         }
-        Ok((apply_impl(self, expr, strategy, apply_command_loc)?).0)
+        let mut match_count = 0;
+        let result = (apply_impl(self, expr, strategy, apply_command_loc, &mut match_count)?).0;
+        if match_count > 0 {
+            Ok(result)
+        } else {
+            Err(RuntimeError::NoMatch(apply_command_loc.clone()))
+        }
     }
 }
 
@@ -691,7 +700,6 @@ impl Context {
                 if let Some(expr) = &self.current_expr {
                     let rule = self.materialize_applied_rule(applied_rule)?;
 
-                    // todo!("Throw an error if not a single match for the rule was found")
                     let new_expr = match Strategy::by_name(&strategy_name) {
                         Some(mut strategy) => rule.apply(expr, &mut strategy, &loc)?,
                         None => return Err(RuntimeError::UnknownStrategy(strategy_name, loc))
@@ -769,6 +777,7 @@ fn start_parser_debugger() {
 
 fn report_error_in_repl(err: &Error, prompt: &str) {
     match err {
+        // TODO: using eprint_repl_loc_cursor makes sense only for SyntaxError-s
         Error::Syntax(SyntaxError::ExpectedToken(expected, actual)) => {
             eprint_repl_loc_cursor(prompt, &actual.loc);
             eprintln!("ERROR: expected {} but got {} '{}'", expected, actual.kind, actual.text);
@@ -817,6 +826,10 @@ fn report_error_in_repl(err: &Error, prompt: &str) {
         Error::Runtime(RuntimeError::StrategyIsNotSym(expr, loc)) => {
             eprint_repl_loc_cursor(prompt, loc);
             eprintln!("ERROR: strategy must be a symbol but got {} {}", expr.human_name(), &expr);
+        }
+        Error::Runtime(RuntimeError::NoMatch(loc)) => {
+            eprint_repl_loc_cursor(prompt, loc);
+            eprintln!("ERROR: no match found");
         }
     }
 }
@@ -874,6 +887,9 @@ fn interpret_file(file_path: &str) {
                 }
                 Error::Runtime(RuntimeError::StrategyIsNotSym(expr, loc)) => {
                     eprintln!("{}: ERROR: strategy must be a symbol but got {} `{}`", loc, expr.human_name(), &expr);
+                }
+                Error::Runtime(RuntimeError::NoMatch(loc)) => {
+                    eprintln!("{}: ERROR: no match", loc);
                 }
             }
             std::process::exit(1);
