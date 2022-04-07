@@ -105,7 +105,6 @@ impl From<RuntimeError> for Error {
     }
 }
 
-
 enum AppliedRule {
     ByName {
         loc: Loc,
@@ -154,6 +153,8 @@ impl AppliedRule {
         }
     }
 }
+
+type Bindings = HashMap<String, Expr>;
 
 impl Expr {
     fn substitute(&self, bindings: &Bindings) -> Self {
@@ -279,6 +280,51 @@ impl Expr {
 
     pub fn parse(lexer: &mut Lexer<impl Iterator<Item=char>>) -> Result<Self, SyntaxError> {
         Self::parse_binary_operator(lexer, 0)
+    }
+
+    fn pattern_match(&self, value: &Expr) -> Option<Bindings> {
+        fn pattern_match_impl(pattern: &Expr, value: &Expr, bindings: &mut Bindings) -> bool {
+            use Expr::*;
+            match (pattern, value) {
+                (Sym(name1), Sym(name2)) => {
+                    name1 == name2
+                }
+                (Var(name), _) => {
+                    if name == "_" {
+                        true
+                    } else if let Some(bound_value) = bindings.get(name) {
+                        bound_value == value
+                    } else {
+                        bindings.insert(name.clone(), value.clone());
+                        true
+                    }
+                }
+                (Op(op1, lhs1, rhs1), Op(op2, lhs2, rhs2)) => {
+                    *op1 == *op2 && pattern_match_impl(lhs1, lhs2, bindings) && pattern_match_impl(rhs1, rhs2, bindings)
+                }
+                (Fun(name1, args1), Fun(name2, args2)) => {
+                    if pattern_match_impl(name1, name2, bindings) && args1.len() == args2.len() {
+                        for i in 0..args1.len() {
+                            if !pattern_match_impl(&args1[i], &args2[i], bindings) {
+                                return false;
+                            }
+                        }
+                        true
+                    } else {
+                        false
+                    }
+                },
+                _ => false,
+            }
+        }
+
+        let mut bindings = HashMap::new();
+
+        if pattern_match_impl(self, value, &mut bindings) {
+            Some(bindings)
+        } else {
+            None
+        }
     }
 }
 
@@ -473,7 +519,7 @@ impl Rule {
         fn apply_impl(rule: &Rule, expr: &Expr, strategy: &Strategy, apply_command_loc: &Loc, match_count: &mut usize) -> Result<(Expr, bool), RuntimeError> {
             match rule {
                 Rule::User{loc: _, head, body} => {
-                    if let Some(bindings) = pattern_match(head, expr) {
+                    if let Some(bindings) = head.pattern_match(expr) {
                         let resolution = strategy.matched(*match_count);
                         *match_count += 1;
                         let new_expr = match resolution.action {
@@ -491,7 +537,7 @@ impl Rule {
                 },
 
                 Rule::Replace => {
-                    if let Some(bindings) = pattern_match(&expr!(apply_rule(Strategy, Head, Body, Expr)), expr) {
+                    if let Some(bindings) = expr!(apply_rule(Strategy, Head, Body, Expr)).pattern_match(expr) {
                         *match_count += 1;
                         let meta_rule = Rule::User {
                             loc: loc_here!(),
@@ -531,53 +577,6 @@ fn expect_token_kind(lexer: &mut Lexer<impl Iterator<Item=char>>, kind: TokenKin
         Ok(token)
     } else {
         Err(SyntaxError::ExpectedToken(kind, token))
-    }
-}
-
-type Bindings = HashMap<String, Expr>;
-
-fn pattern_match(pattern: &Expr, value: &Expr) -> Option<Bindings> {
-    fn pattern_match_impl(pattern: &Expr, value: &Expr, bindings: &mut Bindings) -> bool {
-        use Expr::*;
-        match (pattern, value) {
-            (Sym(name1), Sym(name2)) => {
-                name1 == name2
-            }
-            (Var(name), _) => {
-                if name == "_" {
-                    true
-                } else if let Some(bound_value) = bindings.get(name) {
-                    bound_value == value
-                } else {
-                    bindings.insert(name.clone(), value.clone());
-                    true
-                }
-            }
-            (Op(op1, lhs1, rhs1), Op(op2, lhs2, rhs2)) => {
-                *op1 == *op2 && pattern_match_impl(lhs1, lhs2, bindings) && pattern_match_impl(rhs1, rhs2, bindings)
-            }
-            (Fun(name1, args1), Fun(name2, args2)) => {
-                if pattern_match_impl(name1, name2, bindings) && args1.len() == args2.len() {
-                    for i in 0..args1.len() {
-                        if !pattern_match_impl(&args1[i], &args2[i], bindings) {
-                            return false;
-                        }
-                    }
-                    true
-                } else {
-                    false
-                }
-            },
-            _ => false,
-        }
-    }
-
-    let mut bindings = HashMap::new();
-
-    if pattern_match_impl(pattern, value, &mut bindings) {
-        Some(bindings)
-    } else {
-        None
     }
 }
 
