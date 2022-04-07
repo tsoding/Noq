@@ -10,5 +10,5 @@ shape der(sum)
   apply 0 rule (A + B) - (C + D) = (A - C) + (B - D)
   apply 0 sum_div_dist
   apply 0 lim_sum_dist
-  apply 0 reverse der_def
+  apply all reverse der_def
 done
