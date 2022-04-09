@@ -1,1 +1,3 @@
-rule sum_id 0 + A = A
+rule sum_id    0 + A = A
+rule sum_comm  A + B = B + A
+rule sum_assoc (A + B) + C = A + (B + C)
