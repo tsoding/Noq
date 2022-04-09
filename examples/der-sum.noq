@@ -1,14 +1,13 @@
+load "./std/std.noq"
+
 rule der_def der(F) = lim(dx, 0, (F(x + dx) - F(x))/dx)
 rule sum_def sum(X) = f(X) + g(X)
-rule sub_div_dist (A - B)/C = A/C - B/C
-rule sum_div_dist (A + B)/C = A/C + B/C
-rule lim_sum_dist lim(Var, Value, A + B) = lim(Var, Value, A) + lim(Var, Value, B)
 
 rule der_sum shape der(sum)
   apply 0 der_def
   apply all sum_def
   apply 0 rule (A + B) - (C + D) = (A - C) + (B - D)
-  apply 0 sum_div_dist
+  apply 0 div_sum_dist
   apply 0 lim_sum_dist
   apply all reverse der_def
 done

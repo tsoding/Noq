@@ -1,3 +1,37 @@
-rule sum_id    0 + A = A
-rule sum_comm  A + B = B + A
-rule sum_assoc (A + B) + C = A + (B + C)
+rule 1 1 = s(0)
+rule 2 2 = s(1)
+rule 3 3 = s(2)
+rule 4 4 = s(3)
+
+rule sum_id       0 + A = A
+rule sum_comm     A + B = B + A
+rule sum_assoc    (A + B) + C = A + (B + C)
+rule double_sum   A + A = 2*A
+rule sum          s(A) + B = s(A + B)
+
+rule sub_id A - 0 = A
+rule sub    s(A) - s(B) = A - B
+rule diff_id A - A = 0
+
+rule square       A^2 = A*A
+rule mul_sum_dist A*(B + C) = A*B + A*C
+rule mul_comm     A*B = B*A
+rule mul_assoc    A*(B*C) = (A*B)*C
+
+rule div_sub_dist (A - B)/C = A/C - B/C
+rule div_sum_dist (A + B)/C = A/C + B/C
+
+rule square_of_sum shape (A + B)^2
+  apply all square
+  apply all mul_sum_dist
+  apply all mul_comm
+  apply all mul_sum_dist
+  apply 0   sum_assoc
+  apply 1   reverse sum_assoc
+  apply 2   mul_comm
+  apply 0   double_sum
+  apply all reverse square
+done
+
+rule lim_def lim(Var, Value, Expr) = apply_rule(0, Var, Value, Expr)
+rule lim_sum_dist lim(Var, Value, A + B) = lim(Var, Value, A) + lim(Var, Value, B)
