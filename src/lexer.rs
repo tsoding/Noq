@@ -261,5 +261,6 @@ impl<Chars: Iterator<Item=char>> Iterator for Lexer<Chars> {
 }
 
 fn is_ident_char(x: &char) -> bool {
-    x.is_alphanumeric() || *x == '_'
+    let extra_chars = "_.";
+    x.is_alphanumeric() || extra_chars.contains(*x)
 }
