@@ -44,7 +44,7 @@
 
 (eval-and-compile
   (defconst noq-keywords
-    '("rule" "shape" "apply" "done" "quit" "undo" "reverse")))
+    '("rule" "shape" "apply" "done" "quit" "undo" "reverse" "load")))
 
 (defconst noq-highlights
   `((,(regexp-opt noq-keywords 'symbols) . font-lock-keyword-face)))
