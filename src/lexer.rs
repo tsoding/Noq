@@ -30,6 +30,7 @@ impl fmt::Display for Loc {
 #[derive(Debug, PartialEq, Clone, Copy, Eq, Hash)]
 pub enum TokenKind {
     Ident,
+    Str,
 
     // Keywords
     Rule,
@@ -57,6 +58,7 @@ pub enum TokenKind {
 
     // Terminators
     Invalid,
+    UnclosedStr,
     End,
 }
 
@@ -79,6 +81,7 @@ impl fmt::Display for TokenKind {
         use TokenKind::*;
         match self {
             Ident => write!(f, "identifier"),
+            Str => write!(f, "string"),
             Rule => write!(f, "`rule`"),
             Shape => write!(f, "`shape`"),
             Apply => write!(f, "`apply`"),
@@ -93,6 +96,7 @@ impl fmt::Display for TokenKind {
             Equals => write!(f, "equals"),
             Colon => write!(f, "colon"),
             Invalid => write!(f, "invalid token"),
+            UnclosedStr => write!(f, "unclosed string literal"),
             Plus => write!(f, "plus"),
             Dash => write!(f, "dash"),
             Asterisk => write!(f, "asterisk"),
@@ -196,6 +200,22 @@ impl<Chars: Iterator<Item=char>> Lexer<Chars> {
                     '*' => Token {kind: TokenKind::Asterisk,   text, loc},
                     '/' => Token {kind: TokenKind::Slash,      text, loc},
                     '^' => Token {kind: TokenKind::Caret,      text, loc},
+                    '"' => {
+                        // TODO: no support for escaped sequences inside of string literals
+                        text.clear();
+                        while let Some(x) = self.chars.next_if(|x| *x != '"') {
+                            text.push(x)
+                        }
+                        Token {
+                            kind: if self.chars.next_if(|x| *x == '"').is_some() {
+                                TokenKind::Str
+                            } else {
+                                TokenKind::UnclosedStr
+                            },
+                            text,
+                            loc
+                        }
+                    }
                     _ => {
                         if !is_ident_char(&x) {
                             self.exhausted = true;
