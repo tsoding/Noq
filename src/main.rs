@@ -584,6 +584,11 @@ fn expect_token_kind(lexer: &mut Lexer<impl Iterator<Item=char>>, kind: TokenKin
 
 enum Command {
     DefineRule(Loc, String, Rule),
+    DefineRuleViaShaping {
+        loc: Loc,
+        name: String,
+        expr: Expr,
+    },
     StartShaping(Loc, Expr),
     ApplyRule {
         loc: Loc,
@@ -607,18 +612,28 @@ impl Command {
             },
             TokenKind::Rule => {
                 let name = expect_token_kind(lexer, TokenKind::Ident)?;
-                let head = Expr::parse(lexer)?;
-                expect_token_kind(lexer, TokenKind::Equals)?;
-                let body = Expr::parse(lexer)?;
-                Ok(Command::DefineRule(
-                    keyword.loc.clone(),
-                    name.text,
-                    Rule::User {
-                        loc: keyword.loc,
-                        head,
-                        body,
-                    }
-                ))
+                if lexer.peek_token().kind == TokenKind::Shape {
+                    lexer.next_token();
+                    let expr = Expr::parse(lexer)?;
+                    Ok(Command::DefineRuleViaShaping {
+                        loc: name.loc,
+                        name: name.text,
+                        expr
+                    })
+                } else {
+                    let head = Expr::parse(lexer)?;
+                    expect_token_kind(lexer, TokenKind::Equals)?;
+                    let body = Expr::parse(lexer)?;
+                    Ok(Command::DefineRule(
+                        keyword.loc.clone(),
+                        name.text,
+                        Rule::User {
+                            loc: keyword.loc,
+                            head,
+                            body,
+                        }
+                    ))
+                }
             }
             TokenKind::Shape => Ok(Command::StartShaping(keyword.loc, Expr::parse(lexer)?)),
             TokenKind::Apply => {
@@ -642,6 +657,7 @@ impl Command {
 struct Context {
     rules: HashMap<String, Rule>,
     current_expr: Option<Expr>,
+    rule_via_shaping: Option<(String, Expr)>,
     shaping_history: Vec<Expr>,
     quit: bool,
 }
@@ -653,6 +669,7 @@ impl Context {
         Self {
             rules,
             current_expr: None,
+            rule_via_shaping: None,
             shaping_history: Vec::new(),
             quit: false,
         }
@@ -699,6 +716,14 @@ impl Context {
                 println!("defined rule `{}`", &rule_name);
                 self.rules.insert(rule_name, rule);
             }
+            Command::DefineRuleViaShaping{loc, name, expr, ..} => {
+                if self.current_expr.is_some() {
+                    return Err(RuntimeError::AlreadyShaping(loc).into())
+                }
+                println!(" => {}", &expr);
+                self.current_expr = Some(expr.clone());
+                self.rule_via_shaping = Some((name, expr));
+            },
             Command::StartShaping(loc, expr) => {
                 if self.current_expr.is_some() {
                     return Err(RuntimeError::AlreadyShaping(loc).into())
@@ -723,8 +748,18 @@ impl Context {
                 }
             }
             Command::FinishShaping(loc) => {
-                if self.current_expr.is_some() {
-                    self.current_expr = None;
+                if let Some(body) = self.current_expr.take() {
+                    if let Some((name, head)) = self.rule_via_shaping.take() {
+                        if let Some(existing_rule) = self.rules.get(&name) {
+                            let old_loc = match existing_rule {
+                                Rule::User{loc, ..} => Some(loc.clone()),
+                                Rule::Replace => None,
+                            };
+                            return Err(RuntimeError::RuleAlreadyExists(name, loc, old_loc).into())
+                        }
+                        println!("defined rule `{}`", &name);
+                        self.rules.insert(name, Rule::User {loc, head, body});
+                    }
                     self.shaping_history.clear();
                 } else {
                     return Err(RuntimeError::NoShapingInPlace(loc).into())
@@ -1017,7 +1052,6 @@ fn main() {
     }
 }
 
-// TODO: Define shapes as rules
 // TODO: Custom arbitrary operators like in Haskell
 // TODO: Save session to file
 // TODO: Conditional matching of rules. Some sort of ability to combine several rules into one which tries all the provided rules sequentially and pickes the one that matches

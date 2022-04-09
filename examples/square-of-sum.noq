@@ -4,7 +4,7 @@ rule mul_comm     A*B = B*A
 rule sum_assoc    (A + B) + C = A + (B + C)
 rule double_sum   A + A = 2*A
 
-shape (A + B)^2
+rule square_of_sum shape (A + B)^2
   apply all square
   apply all dist_mul_add
   apply all mul_comm
@@ -15,4 +15,3 @@ shape (A + B)^2
   apply 0   double_sum
   apply all reverse square
 done
-
