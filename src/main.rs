@@ -614,16 +614,6 @@ impl Command {
                 let token = expect_token_kind(lexer, TokenKind::Str)?;
                 Ok(Self::Load(token.loc, token.text))
             },
-            TokenKind::Apply => {
-                let keyword = lexer.next_token();
-                let strategy_name = expect_token_kind(lexer, TokenKind::Ident)?.text;
-                let applied_rule = AppliedRule::parse(lexer)?;
-                Ok(Command::ApplyRule {
-                    loc: keyword.loc,
-                    strategy_name,
-                    applied_rule,
-                })
-            }
             TokenKind::CloseCurly => {
                 let keyword = lexer.next_token();
                 Ok(Command::FinishShaping(keyword.loc))
@@ -641,14 +631,26 @@ impl Command {
                 Ok(Command::DeleteRule(keyword.loc, expect_token_kind(lexer, TokenKind::Ident)?.text))
             }
             _ => {
-                // <expr> :: <head> {
                 let expr = Expr::parse(lexer)?;
 
                 match lexer.peek_token().kind {
+                    TokenKind::Bar => {
+                        let keyword = lexer.next_token();
+                        if let Expr::Sym(strategy_name) = expr {
+                            let applied_rule = AppliedRule::parse(lexer)?;
+                            Ok(Command::ApplyRule {
+                                loc: keyword.loc,
+                                strategy_name,
+                                applied_rule,
+                            })
+                        } else {
+                            todo!("Report that we expected a symbol")
+                        }
+                    }
                     TokenKind::OpenCurly  => {
                         let keyword = lexer.next_token();
                         Ok(Command::StartShaping(keyword.loc, expr))
-                    },
+                    }
                     TokenKind::DoubleColon => {
                         let keyword = lexer.next_token();
                         match expr {

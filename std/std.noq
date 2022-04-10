@@ -1,17 +1,17 @@
-1          :: 1 = s(0)
-2          :: 2 = s(1)
-3          :: 3 = s(2)
-4          :: 4 = s(3)
+1            :: 1 = s(0)
+2            :: 2 = s(1)
+3            :: 3 = s(2)
+4            :: 4 = s(3)
 
-sum_id     :: 0 + A = A
-sum_comm   :: A + B = B + A
-sum_assoc  :: (A + B) + C = A + (B + C)
-double_sum :: A + A = 2*A
-sum        :: s(A) + B = s(A + B)
+sum_id       :: 0 + A = A
+sum_comm     :: A + B = B + A
+sum_assoc    :: (A + B) + C = A + (B + C)
+double_sum   :: A + A = 2*A
+sum          :: s(A) + B = s(A + B)
 
-sub_id     :: A - 0 = A
-sub        :: s(A) - s(B) = A - B
-diff_id    :: A - A = 0
+sub_id       :: A - 0 = A
+sub          :: s(A) - s(B) = A - B
+diff_id      :: A - A = 0
 
 square       :: A^2 = A*A
 mul_sum_dist :: A*(B + C) = A*B + A*C
@@ -22,16 +22,16 @@ div_sub_dist :: (A - B)/C = A/C - B/C
 div_sum_dist :: (A + B)/C = A/C + B/C
 
 square_of_sum :: (A + B)^2 {
-  apply all square
-  apply all mul_sum_dist
-  apply all mul_comm
-  apply all mul_sum_dist
-  apply 0   sum_assoc
-  apply 1   reverse sum_assoc
-  apply 2   mul_comm
-  apply 0   double_sum
-  apply all reverse square
+  all | square
+  all | mul_sum_dist
+  all | mul_comm
+  all | mul_sum_dist
+  0   | sum_assoc
+  1   | reverse sum_assoc
+  2   | mul_comm
+  0   | double_sum
+  all | reverse square
 }
 
-lim_def :: lim(Var, Value, Expr) = apply_rule(0, Var, Value, Expr)
+lim_def      :: lim(Var, Value, Expr)  = apply_rule(0, Var, Value, Expr)
 lim_sum_dist :: lim(Var, Value, A + B) = lim(Var, Value, A) + lim(Var, Value, B)

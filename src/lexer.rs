@@ -33,7 +33,6 @@ pub enum TokenKind {
     Str,
 
     // Keywords
-    Apply,
     Undo,
     Quit,
     Reverse,
@@ -49,6 +48,7 @@ pub enum TokenKind {
     DoubleColon,
     OpenCurly,
     CloseCurly,
+    Bar,
 
     // Binary Operators
     Plus,
@@ -66,7 +66,6 @@ pub enum TokenKind {
 
 fn keyword_by_name(text: &str) -> Option<TokenKind> {
     match text {
-        "apply"    => Some(TokenKind::Apply),
         "quit"     => Some(TokenKind::Quit),
         "undo"     => Some(TokenKind::Undo),
         "reverse"  => Some(TokenKind::Reverse),
@@ -82,7 +81,6 @@ impl fmt::Display for TokenKind {
         match self {
             Ident => write!(f, "identifier"),
             Str => write!(f, "string"),
-            Apply => write!(f, "`apply`"),
             Undo => write!(f, "`undo`"),
             Quit => write!(f, "`quit`"),
             Reverse => write!(f, "`reverse`"),
@@ -104,6 +102,7 @@ impl fmt::Display for TokenKind {
             Asterisk => write!(f, "asterisk"),
             Slash => write!(f, "slash"),
             Caret => write!(f, "caret"),
+            Bar => write!(f, "bar"),
             End => write!(f, "end of input"),
         }
     }
@@ -210,6 +209,7 @@ impl<Chars: Iterator<Item=char>> Lexer<Chars> {
                     '%' => Token {kind: TokenKind::Percent,    text, loc},
                     '{' => Token {kind: TokenKind::OpenCurly,  text, loc},
                     '}' => Token {kind: TokenKind::CloseCurly, text, loc},
+                    '|' => Token {kind: TokenKind::Bar,        text, loc},
                     '"' => {
                         // TODO: no support for escaped sequences inside of string literals
                         text.clear();
