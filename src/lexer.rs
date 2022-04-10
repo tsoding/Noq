@@ -49,6 +49,7 @@ pub enum TokenKind {
     Comma,
     Equals,
     Colon,
+    DoubleColon,
 
     // Binary Operators
     Plus,
@@ -99,6 +100,7 @@ impl fmt::Display for TokenKind {
             Comma => write!(f, "comma"),
             Equals => write!(f, "equals"),
             Colon => write!(f, "colon"),
+            DoubleColon => write!(f, "double colon"),
             Percent => write!(f, "percent"),
             Invalid => write!(f, "invalid token"),
             UnclosedStr => write!(f, "unclosed string literal"),
@@ -199,7 +201,12 @@ impl<Chars: Iterator<Item=char>> Lexer<Chars> {
                     ')' => Token {kind: TokenKind::CloseParen, text, loc},
                     ',' => Token {kind: TokenKind::Comma,      text, loc},
                     '=' => Token {kind: TokenKind::Equals,     text, loc},
-                    ':' => Token {kind: TokenKind::Colon,      text, loc},
+                    ':' => if self.chars.next_if(|x| *x == ':').is_some() {
+                        text.push(':');
+                        Token {kind: TokenKind::DoubleColon, text, loc}
+                    } else {
+                        Token {kind: TokenKind::Colon, text, loc}
+                    },
                     '+' => Token {kind: TokenKind::Plus,       text, loc},
                     '-' => Token {kind: TokenKind::Dash,       text, loc},
                     '*' => Token {kind: TokenKind::Asterisk,   text, loc},
