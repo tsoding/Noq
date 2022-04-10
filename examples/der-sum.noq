@@ -1,12 +1,12 @@
 load "./std/std.noq"
 
-rule der_def der(F) = lim(dx, 0, (F(x + dx) - F(x))/dx)
-rule sum_def sum(X) = f(X) + g(X)
+der_def :: der(F) = lim(dx, 0, (F(x + dx) - F(x))/dx)
+sum_def :: sum(X) = f(X) + g(X)
 
-rule der_sum shape der(sum)
+der_sum :: shape der(sum)
   apply 0 der_def
   apply all sum_def
-  apply 0 rule (A + B) - (C + D) = (A - C) + (B - D)
+  apply 0 :: (A + B) - (C + D) = (A - C) + (B - D)
   apply 0 div_sum_dist
   apply 0 lim_sum_dist
   apply all reverse der_def

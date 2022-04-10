@@ -74,7 +74,6 @@ enum SyntaxError {
     ExpectedToken(TokenKind, Token),
     ExpectedPrimary(Token),
     ExpectedAppliedRule(Token),
-    ExpectedCommand(Token),
 }
 
 #[derive(Debug)]
@@ -143,7 +142,7 @@ impl AppliedRule {
         let token = lexer.next_token();
         match token.kind {
             TokenKind::Reverse => Ok(Self::parse(lexer)?.reversed()),
-            TokenKind::Rule => {
+            TokenKind::DoubleColon => {
                 let head = Expr::parse(lexer)?;
                 expect_token_kind(lexer, TokenKind::Equals)?;
                 let body = Expr::parse(lexer)?;
@@ -607,14 +606,46 @@ enum Command {
 
 impl Command {
     fn parse(lexer: &mut Lexer<impl Iterator<Item=char>>) -> Result<Command, SyntaxError> {
-        let keyword = lexer.next_token();
-        match keyword.kind {
+        let keyword_kind = lexer.peek_token().kind;
+        match keyword_kind {
             TokenKind::Load => {
+                lexer.next_token();
                 let token = expect_token_kind(lexer, TokenKind::Str)?;
                 Ok(Self::Load(token.loc, token.text))
             },
-            TokenKind::Rule => {
+            TokenKind::Shape => {
+                let keyword = lexer.next_token();
+                Ok(Command::StartShaping(keyword.loc, Expr::parse(lexer)?))
+            },
+            TokenKind::Apply => {
+                let keyword = lexer.next_token();
+                let strategy_name = expect_token_kind(lexer, TokenKind::Ident)?.text;
+                let applied_rule = AppliedRule::parse(lexer)?;
+                Ok(Command::ApplyRule {
+                    loc: keyword.loc,
+                    strategy_name,
+                    applied_rule,
+                })
+            }
+            TokenKind::Done => {
+                let keyword = lexer.next_token();
+                Ok(Command::FinishShaping(keyword.loc))
+            }
+            TokenKind::Undo => {
+                let keyword = lexer.next_token();
+                Ok(Command::UndoRule(keyword.loc))
+            }
+            TokenKind::Quit => {
+                lexer.next_token();
+                Ok(Command::Quit)
+            }
+            TokenKind::Delete => {
+                let keyword = lexer.next_token();
+                Ok(Command::DeleteRule(keyword.loc, expect_token_kind(lexer, TokenKind::Ident)?.text))
+            }
+            _ => {
                 let name = expect_token_kind(lexer, TokenKind::Ident)?;
+                expect_token_kind(lexer, TokenKind::DoubleColon)?;
                 if lexer.peek_token().kind == TokenKind::Shape {
                     lexer.next_token();
                     let expr = Expr::parse(lexer)?;
@@ -628,31 +659,16 @@ impl Command {
                     expect_token_kind(lexer, TokenKind::Equals)?;
                     let body = Expr::parse(lexer)?;
                     Ok(Command::DefineRule(
-                        keyword.loc.clone(),
+                        name.loc.clone(),
                         name.text,
                         Rule::User {
-                            loc: keyword.loc,
+                            loc: name.loc,
                             head,
                             body,
                         }
                     ))
                 }
             }
-            TokenKind::Shape => Ok(Command::StartShaping(keyword.loc, Expr::parse(lexer)?)),
-            TokenKind::Apply => {
-                let strategy_name = expect_token_kind(lexer, TokenKind::Ident)?.text;
-                let applied_rule = AppliedRule::parse(lexer)?;
-                Ok(Command::ApplyRule {
-                    loc: keyword.loc,
-                    strategy_name,
-                    applied_rule,
-                })
-            }
-            TokenKind::Done => Ok(Command::FinishShaping(keyword.loc)),
-            TokenKind::Undo => Ok(Command::UndoRule(keyword.loc)),
-            TokenKind::Quit => Ok(Command::Quit),
-            TokenKind::Delete => Ok(Command::DeleteRule(keyword.loc, expect_token_kind(lexer, TokenKind::Ident)?.text)),
-            _ => Err(SyntaxError::ExpectedCommand(keyword)),
         }
     }
 }
@@ -850,10 +866,6 @@ fn report_error_in_repl(err: &Error, prompt: &str) {
                 eprint_repl_loc_cursor(prompt, &token.loc);
                 eprintln!("ERROR: expected applied rule argument, but got {}", token.kind)
             }
-            SyntaxError::ExpectedCommand(token) => {
-                eprint_repl_loc_cursor(prompt, &token.loc);
-                eprintln!("ERROR: expected command, but got {}", token.kind)
-            }
         }
 
         Error::Runtime(err) => match err {
@@ -918,9 +930,6 @@ fn interpret_file(file_path: &str) {
                 }
                 Error::Syntax(SyntaxError::ExpectedAppliedRule(token)) => {
                     eprintln!("{}: ERROR: expected applied rule argument, but got {}", token.loc, token.kind)
-                }
-                Error::Syntax(SyntaxError::ExpectedCommand(token)) => {
-                    eprintln!("{}: ERROR: expected command, but got {}", token.loc, token.kind)
                 }
                 Error::Runtime(RuntimeError::RuleAlreadyExists(name, new_loc, old_loc)) => {
                     eprintln!("{}: ERROR: redefinition of existing rule {}", new_loc, name);

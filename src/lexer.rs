@@ -33,7 +33,6 @@ pub enum TokenKind {
     Str,
 
     // Keywords
-    Rule,
     Shape,
     Apply,
     Done,
@@ -67,7 +66,6 @@ pub enum TokenKind {
 
 fn keyword_by_name(text: &str) -> Option<TokenKind> {
     match text {
-        "rule"     => Some(TokenKind::Rule),
         "shape"    => Some(TokenKind::Shape),
         "apply"    => Some(TokenKind::Apply),
         "done"     => Some(TokenKind::Done),
@@ -86,7 +84,6 @@ impl fmt::Display for TokenKind {
         match self {
             Ident => write!(f, "identifier"),
             Str => write!(f, "string"),
-            Rule => write!(f, "`rule`"),
             Shape => write!(f, "`shape`"),
             Apply => write!(f, "`apply`"),
             Done => write!(f, "`done`"),

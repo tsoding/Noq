@@ -33,13 +33,13 @@ Current expression syntax can be defined roughly like this:
 The two main entities of the languare are Rules and Shapes. A rule defines pattern (head) and it's corresponding substitution (body). The rule definition has the following syntax:
 
 ```
-rule <name:symbol> <head:expression> = <body:expression>
+<name:symbol> :: <head:expression> = <body:expression>
 ```
 
 Here is an example of a rule that swaps elements of a pair:
 
 ```
-rule swap swap(pair(A, B)) = pair(B, A)
+swap :: swap(pair(A, B)) = pair(B, A)
 ```
 
 Shaping is a process of sequential applying of rules to an expression transforming it into a different expression. Shaping has the following syntax:
@@ -66,8 +66,6 @@ You don't have to define a rule to use it in shaping. You can directly describe 
 
 ```
 shape swap(pair(f(a), g(b)))
-  apply all rule swap(pair(A, B)) = pair(B, A)
+  apply all :: swap(pair(A, B)) = pair(B, A)
 done
 ```
-
-Notice that we do not provide the rule name after the `rule` keyword.

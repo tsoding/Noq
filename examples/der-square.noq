@@ -1,19 +1,19 @@
 load "./std/std.noq"
 
-rule der_def der(F) = lim(dx, 0, (F(x + dx) - F(x))/dx)
-rule square_def square(X) = X^2
+der_def :: der(F) = lim(dx, 0, (F(x + dx) - F(x))/dx)
+square_def :: square(X) = X^2
 
 shape der(square)
   apply 0 der_def
   apply all square_def
   apply 0 square_of_sum
-  apply 0 rule (A + B) - C = (A - C) + B
+  apply 0 :: (A + B) - C = (A - C) + B
   apply 0 diff_id
   apply 0 sum_id
   apply 0 div_sum_dist
   apply 0 mul_assoc
   apply 0 square
-  apply all rule (A*B)/B = A
+  apply all :: (A*B)/B = A
   apply 0 lim_def
   apply 0 replace
   apply 0 sum_comm
