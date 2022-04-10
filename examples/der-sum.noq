@@ -9,5 +9,5 @@ der_sum :: der(sum) {
   0   | :: (A + B) - (C + D) = (A - C) + (B - D)
   0   | div_sum_dist
   0   | lim_sum_dist
-  all | reverse der_def
+  all | !der_def
 }

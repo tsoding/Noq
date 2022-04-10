@@ -27,10 +27,10 @@ square_of_sum :: (A + B)^2 {
   all | mul_comm
   all | mul_sum_dist
   0   | sum_assoc
-  1   | reverse sum_assoc
+  1   | !sum_assoc
   2   | mul_comm
   0   | double_sum
-  all | reverse square
+  all | !square
 }
 
 lim_def      :: lim(Var, Value, Expr)  = apply_rule(0, Var, Value, Expr)

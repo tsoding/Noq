@@ -35,7 +35,6 @@ pub enum TokenKind {
     // Keywords
     Undo,
     Quit,
-    Reverse,
     Delete,
     Load,
 
@@ -49,6 +48,7 @@ pub enum TokenKind {
     OpenCurly,
     CloseCurly,
     Bar,
+    Bang,
 
     // Binary Operators
     Plus,
@@ -68,7 +68,6 @@ fn keyword_by_name(text: &str) -> Option<TokenKind> {
     match text {
         "quit"     => Some(TokenKind::Quit),
         "undo"     => Some(TokenKind::Undo),
-        "reverse"  => Some(TokenKind::Reverse),
         "delete"   => Some(TokenKind::Delete),
         "load"   => Some(TokenKind::Load),
         _ => None,
@@ -83,7 +82,6 @@ impl fmt::Display for TokenKind {
             Str => write!(f, "string"),
             Undo => write!(f, "`undo`"),
             Quit => write!(f, "`quit`"),
-            Reverse => write!(f, "`reverse`"),
             Delete => write!(f, "`delete`"),
             Load => write!(f, "`load`"),
             OpenParen => write!(f, "open paren"),
@@ -103,6 +101,7 @@ impl fmt::Display for TokenKind {
             Slash => write!(f, "slash"),
             Caret => write!(f, "caret"),
             Bar => write!(f, "bar"),
+            Bang => write!(f, "bang"),
             End => write!(f, "end of input"),
         }
     }
@@ -210,6 +209,7 @@ impl<Chars: Iterator<Item=char>> Lexer<Chars> {
                     '{' => Token {kind: TokenKind::OpenCurly,  text, loc},
                     '}' => Token {kind: TokenKind::CloseCurly, text, loc},
                     '|' => Token {kind: TokenKind::Bar,        text, loc},
+                    '!' => Token {kind: TokenKind::Bang,       text, loc},
                     '"' => {
                         // TODO: no support for escaped sequences inside of string literals
                         text.clear();

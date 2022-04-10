@@ -142,7 +142,7 @@ impl AppliedRule {
     fn parse(lexer: &mut Lexer<impl Iterator<Item=char>>) -> Result<Self, SyntaxError> {
         let token = lexer.next_token();
         match token.kind {
-            TokenKind::Reverse => Ok(Self::parse(lexer)?.reversed()),
+            TokenKind::Bang => Ok(Self::parse(lexer)?.reversed()),
             TokenKind::DoubleColon => {
                 let head = Expr::parse(lexer)?;
                 expect_token_kind(lexer, TokenKind::Equals)?;
