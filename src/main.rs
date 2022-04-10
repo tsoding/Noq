@@ -18,6 +18,7 @@ enum Op {
     Mul,
     Div,
     Pow,
+    Mod,
 }
 
 impl Op {
@@ -30,6 +31,7 @@ impl Op {
             TokenKind::Asterisk => Some(Op::Mul),
             TokenKind::Slash => Some(Op::Div),
             TokenKind::Caret => Some(Op::Pow),
+            TokenKind::Percent => Some(Op::Mod),
             _ => None
         }
     }
@@ -37,9 +39,9 @@ impl Op {
     fn precedence(&self) -> usize {
         use Op::*;
         match self {
-            Add | Sub => 0,
-            Mul | Div => 1,
-            Pow       => 2,
+            Add | Sub       => 0,
+            Mul | Div | Mod => 1,
+            Pow             => 2,
         }
     }
 }
@@ -51,6 +53,7 @@ impl fmt::Display for Op {
             Op::Sub => write!(f, "-"),
             Op::Mul => write!(f, "*"),
             Op::Div => write!(f, "/"),
+            Op::Mod => write!(f, "%"),
             Op::Pow => write!(f, "^"),
         }
     }

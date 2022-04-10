@@ -56,6 +56,7 @@ pub enum TokenKind {
     Asterisk,
     Slash,
     Caret,
+    Percent,
 
     // Terminators
     Invalid,
@@ -98,6 +99,7 @@ impl fmt::Display for TokenKind {
             Comma => write!(f, "comma"),
             Equals => write!(f, "equals"),
             Colon => write!(f, "colon"),
+            Percent => write!(f, "percent"),
             Invalid => write!(f, "invalid token"),
             UnclosedStr => write!(f, "unclosed string literal"),
             Plus => write!(f, "plus"),
@@ -203,6 +205,7 @@ impl<Chars: Iterator<Item=char>> Lexer<Chars> {
                     '*' => Token {kind: TokenKind::Asterisk,   text, loc},
                     '/' => Token {kind: TokenKind::Slash,      text, loc},
                     '^' => Token {kind: TokenKind::Caret,      text, loc},
+                    '%' => Token {kind: TokenKind::Percent,    text, loc},
                     '"' => {
                         // TODO: no support for escaped sequences inside of string literals
                         text.clear();
