@@ -45,17 +45,17 @@ swap :: swap(pair(A, B)) = pair(B, A)
 Shaping is a process of sequential applying of rules to an expression transforming it into a different expression. Shaping has the following syntax:
 
 ```
-shape <expression>
+<expression> {
   ... sequence of rule applications ...
-done
+}
 ```
 
 For example here is how you shape expression `swap(pair(f(a), g(b)))` with the `swap` rule defined above:
 
 ```
-shape swap(pair(f(a), g(b)))
+swap(pair(f(a), g(b))) {
   apply all swap
-done
+}
 ```
 
 The result of this shaping is `pair(g(b), f(a))`.
@@ -65,7 +65,7 @@ The result of this shaping is `pair(g(b), f(a))`.
 You don't have to define a rule to use it in shaping. You can directly describe it after the `apply` keyword:
 
 ```
-shape swap(pair(f(a), g(b)))
+swap(pair(f(a), g(b))) {
   apply all :: swap(pair(A, B)) = pair(B, A)
-done
+}
 ```

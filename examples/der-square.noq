@@ -3,7 +3,7 @@ load "./std/std.noq"
 der_def :: der(F) = lim(dx, 0, (F(x + dx) - F(x))/dx)
 square_def :: square(X) = X^2
 
-shape der(square)
+der(square) {
   apply 0 der_def
   apply all square_def
   apply 0 square_of_sum
@@ -18,4 +18,4 @@ shape der(square)
   apply 0 replace
   apply 0 sum_comm
   apply 0 sum_id
-done
+}

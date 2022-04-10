@@ -1,7 +1,7 @@
 use std::fmt;
 use std::iter::Peekable;
 
-#[derive(Debug, Clone)]
+#[derive(Default, Debug, Clone)]
 pub struct Loc {
     pub file_path: Option<String>,
     pub row: usize,
@@ -33,9 +33,7 @@ pub enum TokenKind {
     Str,
 
     // Keywords
-    Shape,
     Apply,
-    Done,
     Undo,
     Quit,
     Reverse,
@@ -49,6 +47,8 @@ pub enum TokenKind {
     Equals,
     Colon,
     DoubleColon,
+    OpenCurly,
+    CloseCurly,
 
     // Binary Operators
     Plus,
@@ -66,9 +66,7 @@ pub enum TokenKind {
 
 fn keyword_by_name(text: &str) -> Option<TokenKind> {
     match text {
-        "shape"    => Some(TokenKind::Shape),
         "apply"    => Some(TokenKind::Apply),
-        "done"     => Some(TokenKind::Done),
         "quit"     => Some(TokenKind::Quit),
         "undo"     => Some(TokenKind::Undo),
         "reverse"  => Some(TokenKind::Reverse),
@@ -84,9 +82,7 @@ impl fmt::Display for TokenKind {
         match self {
             Ident => write!(f, "identifier"),
             Str => write!(f, "string"),
-            Shape => write!(f, "`shape`"),
             Apply => write!(f, "`apply`"),
-            Done => write!(f, "`done`"),
             Undo => write!(f, "`undo`"),
             Quit => write!(f, "`quit`"),
             Reverse => write!(f, "`reverse`"),
@@ -94,6 +90,8 @@ impl fmt::Display for TokenKind {
             Load => write!(f, "`load`"),
             OpenParen => write!(f, "open paren"),
             CloseParen => write!(f, "close paren"),
+            OpenCurly => write!(f, "open curly"),
+            CloseCurly => write!(f, "close curly"),
             Comma => write!(f, "comma"),
             Equals => write!(f, "equals"),
             Colon => write!(f, "colon"),
@@ -210,6 +208,8 @@ impl<Chars: Iterator<Item=char>> Lexer<Chars> {
                     '/' => Token {kind: TokenKind::Slash,      text, loc},
                     '^' => Token {kind: TokenKind::Caret,      text, loc},
                     '%' => Token {kind: TokenKind::Percent,    text, loc},
+                    '{' => Token {kind: TokenKind::OpenCurly,  text, loc},
+                    '}' => Token {kind: TokenKind::CloseCurly, text, loc},
                     '"' => {
                         // TODO: no support for escaped sequences inside of string literals
                         text.clear();

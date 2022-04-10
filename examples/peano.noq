@@ -2,16 +2,16 @@
 
 load "./std/std.noq"
 
-shape 2 + 3
+(2 + 3) {
   apply 0 3
   apply all 2
   apply all 1
   apply all sum
   apply all sum
   apply all sum_id
-done
+}
 
-shape 4 - 3
+(4 - 3) {
   apply 0 4
   apply all 3
   apply all 2
@@ -20,5 +20,5 @@ shape 4 - 3
   apply all sub
   apply all sub
   apply all sub_id
-done
+}
 

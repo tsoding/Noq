@@ -74,6 +74,7 @@ enum SyntaxError {
     ExpectedToken(TokenKind, Token),
     ExpectedPrimary(Token),
     ExpectedAppliedRule(Token),
+    ExpectedCommand(Token),
 }
 
 #[derive(Debug)]
@@ -613,10 +614,6 @@ impl Command {
                 let token = expect_token_kind(lexer, TokenKind::Str)?;
                 Ok(Self::Load(token.loc, token.text))
             },
-            TokenKind::Shape => {
-                let keyword = lexer.next_token();
-                Ok(Command::StartShaping(keyword.loc, Expr::parse(lexer)?))
-            },
             TokenKind::Apply => {
                 let keyword = lexer.next_token();
                 let strategy_name = expect_token_kind(lexer, TokenKind::Ident)?.text;
@@ -627,7 +624,7 @@ impl Command {
                     applied_rule,
                 })
             }
-            TokenKind::Done => {
+            TokenKind::CloseCurly => {
                 let keyword = lexer.next_token();
                 Ok(Command::FinishShaping(keyword.loc))
             }
@@ -644,29 +641,48 @@ impl Command {
                 Ok(Command::DeleteRule(keyword.loc, expect_token_kind(lexer, TokenKind::Ident)?.text))
             }
             _ => {
-                let name = expect_token_kind(lexer, TokenKind::Ident)?;
-                expect_token_kind(lexer, TokenKind::DoubleColon)?;
-                if lexer.peek_token().kind == TokenKind::Shape {
-                    lexer.next_token();
-                    let expr = Expr::parse(lexer)?;
-                    Ok(Command::DefineRuleViaShaping {
-                        loc: name.loc,
-                        name: name.text,
-                        expr
-                    })
-                } else {
-                    let head = Expr::parse(lexer)?;
-                    expect_token_kind(lexer, TokenKind::Equals)?;
-                    let body = Expr::parse(lexer)?;
-                    Ok(Command::DefineRule(
-                        name.loc.clone(),
-                        name.text,
-                        Rule::User {
-                            loc: name.loc,
-                            head,
-                            body,
+                // <expr> :: <head> {
+                let expr = Expr::parse(lexer)?;
+
+                match lexer.peek_token().kind {
+                    TokenKind::OpenCurly  => {
+                        let keyword = lexer.next_token();
+                        Ok(Command::StartShaping(keyword.loc, expr))
+                    },
+                    TokenKind::DoubleColon => {
+                        let keyword = lexer.next_token();
+                        match expr {
+                            Expr::Sym(name) => {
+                                let head = Expr::parse(lexer)?;
+                                match lexer.peek_token().kind {
+                                    TokenKind::OpenCurly =>  {
+                                        lexer.next_token();
+                                        Ok(Command::DefineRuleViaShaping {
+                                            loc: keyword.loc,
+                                            name: name,
+                                            expr: head
+                                        })
+                                    }
+                                    TokenKind::Equals => {
+                                        lexer.next_token();
+                                        let body = Expr::parse(lexer)?;
+                                        Ok(Command::DefineRule(
+                                            keyword.loc.clone(),
+                                            name,
+                                            Rule::User {
+                                                loc: keyword.loc.clone(),
+                                                head,
+                                                body,
+                                            }
+                                        ))
+                                    }
+                                    _ => Err(SyntaxError::ExpectedCommand(lexer.next_token()).into())
+                                }
+                            }
+                            _ => todo!("Report that we expected a symbol")
                         }
-                    ))
+                    }
+                    _ => Err(SyntaxError::ExpectedCommand(lexer.next_token()).into())
                 }
             }
         }
@@ -866,6 +882,10 @@ fn report_error_in_repl(err: &Error, prompt: &str) {
                 eprint_repl_loc_cursor(prompt, &token.loc);
                 eprintln!("ERROR: expected applied rule argument, but got {}", token.kind)
             }
+            SyntaxError::ExpectedCommand(token) => {
+                eprint_repl_loc_cursor(prompt, &token.loc);
+                eprintln!("ERROR: expected command, but got {}", token.kind);
+            }
         }
 
         Error::Runtime(err) => match err {
@@ -878,7 +898,7 @@ fn report_error_in_repl(err: &Error, prompt: &str) {
                 }
             }
             RuntimeError::AlreadyShaping(_loc) => {
-                eprintln!("ERROR: already shaping an expression. Finish the current shaping with {} first.", TokenKind::Done);
+                eprintln!("ERROR: already shaping an expression. Finish the current shaping with {} first.", TokenKind::CloseCurly);
             }
             RuntimeError::NoShapingInPlace(_loc) => {
                 eprintln!("ERROR: no shaping in place.");
@@ -931,6 +951,9 @@ fn interpret_file(file_path: &str) {
                 Error::Syntax(SyntaxError::ExpectedAppliedRule(token)) => {
                     eprintln!("{}: ERROR: expected applied rule argument, but got {}", token.loc, token.kind)
                 }
+                Error::Syntax(SyntaxError::ExpectedCommand(token)) => {
+                    eprintln!("{}: ERROR: expected command, but got {}", token.loc, token.kind)
+                }
                 Error::Runtime(RuntimeError::RuleAlreadyExists(name, new_loc, old_loc)) => {
                     eprintln!("{}: ERROR: redefinition of existing rule {}", new_loc, name);
                     if let Some(loc) = old_loc {
@@ -942,7 +965,7 @@ fn interpret_file(file_path: &str) {
                 }
                 Error::Runtime(RuntimeError::AlreadyShaping(loc)) => {
                     eprintln!("{}: ERROR: already shaping an expression. Finish the current shaping with {} first.",
-                              loc, TokenKind::Done);
+                              loc, TokenKind::CloseCurly);
                 }
                 Error::Runtime(RuntimeError::NoShapingInPlace(loc)) => {
                     eprintln!("{}: ERROR: no shaping in place.", loc);
