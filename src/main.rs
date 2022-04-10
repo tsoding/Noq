@@ -1052,6 +1052,7 @@ fn main() {
     }
 }
 
+// TODO: Nested shaping
 // TODO: Custom arbitrary operators like in Haskell
 // TODO: Save session to file
 // TODO: Conditional matching of rules. Some sort of ability to combine several rules into one which tries all the provided rules sequentially and pickes the one that matches
