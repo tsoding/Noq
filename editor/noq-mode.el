@@ -54,10 +54,6 @@
     ("\\([0-9]+\\)[\t ]*|" 1 'font-lock-keyword-face)
 
     ;; Variables
-    ;; FIXME: It would be cool if variables were highlighted too (see below). However, there is an
-    ;; issue in that a number can either be a symbol or a variable depending on the context.
-    ;; The regex below works around this by only highlighting variables that don't start with a
-    ;; number, however this obviously won't cover all possible variables.
     ("[^a-zA-Z0-9_]\\([_A-Z][_a-zA-Z0-9]*\\)" 1 'font-lock-builtin-face)
 
     ;; Function names
