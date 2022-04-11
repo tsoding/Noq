@@ -43,11 +43,26 @@
   "Syntax table for `noq-mode'.")
 
 (eval-and-compile
-  (defconst noq-keywords
-    '("rule" "shape" "apply" "done" "quit" "undo" "reverse" "load")))
+  (defconst noq-apply-strategies
+    '("all" "deep")))
 
 (defconst noq-highlights
-  `((,(regexp-opt noq-keywords 'symbols) . font-lock-keyword-face)))
+  `(
+    ;; `Apply` strategies
+    (,(format "\\(%s\\)[\t ]*|" (mapconcat 'regexp-quote noq-apply-strategies "\\|"))
+     1 'font-lock-keyword-face)
+    ("\\([0-9]+\\)[\t ]*|" 1 'font-lock-keyword-face)
+
+    ;; Variables
+    ;; FIXME: It would be cool if variables were highlighted too (see below). However, there is an
+    ;; issue in that a number can either be a symbol or a variable depending on the context.
+    ;; The regex below works around this by only highlighting variables that don't start with a
+    ;; number, however this obviously won't cover all possible variables.
+    ("[^a-zA-Z0-9_]\\([_A-Z][_a-zA-Z0-9]*\\)" 1 'font-lock-builtin-face)
+
+    ;; Function names
+    ("\\([^\n\| ]*\\)[\t ]*::" 1 'font-lock-function-name-face)
+    ))
 
 ;;;###autoload
 (define-derived-mode noq-mode prog-mode "noq"
