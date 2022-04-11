@@ -46,8 +46,15 @@
   (defconst noq-apply-strategies
     '("all" "deep")))
 
+(eval-and-compile
+  (defconst noq-keywords
+    '("undo" "quit" "delete" "load")))
+
 (defconst noq-highlights
-  `(
+  `((
+    ;; Keywords
+    ,(regexp-opt noq-keywords 'words) . 'font-lock-keyword-face)
+
     ;; `Apply` strategies
     (,(format "\\(%s\\)[\t ]*|" (mapconcat 'regexp-quote noq-apply-strategies "\\|"))
      1 'font-lock-type-face)
