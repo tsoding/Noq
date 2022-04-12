@@ -43,11 +43,29 @@
   "Syntax table for `noq-mode'.")
 
 (eval-and-compile
+  (defconst noq-apply-strategies
+    '("all" "deep")))
+
+(eval-and-compile
   (defconst noq-keywords
-    '("rule" "shape" "apply" "done" "quit" "undo" "reverse" "load")))
+    '("undo" "quit" "delete" "load")))
 
 (defconst noq-highlights
-  `((,(regexp-opt noq-keywords 'symbols) . font-lock-keyword-face)))
+  `((
+    ;; Keywords
+    ,(regexp-opt noq-keywords 'words) . 'font-lock-keyword-face)
+
+    ;; `Apply` strategies
+    (,(format "\\(%s\\)[\t ]*|" (mapconcat 'regexp-quote noq-apply-strategies "\\|"))
+     1 'font-lock-type-face)
+    ("\\([0-9]+\\)[\t ]*|" 1 'font-lock-type-face)
+
+    ;; Variables
+    ("\\(^\\|[^a-zA-Z0-9_]\\)\\([_A-Z][_a-zA-Z0-9]*\\)" 2 'font-lock-variable-name-face)
+
+    ;; Functor names
+    ("\\([^\n\| ]*\\)[\t ]*::" 1 'font-lock-function-name-face)
+    ))
 
 ;;;###autoload
 (define-derived-mode noq-mode prog-mode "noq"

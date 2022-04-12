@@ -24,7 +24,7 @@ Current expression syntax can be defined roughly like this:
 <primary> ::= (`(` <expression> `)`) | <application-chain> | <symbol> | <variable>
 <application-chain> ::= (<symbol> | <variable>) (<fun-args>)+
 <symbol> ::= [a-z0-9][_a-zA-Z0-9]*
-<variable> ::= [_A-Z0-9][_a-zA-Z0-9]*
+<variable> ::= [_A-Z][_a-zA-Z0-9]*
 <fun-args> ::= `(` (<expression>),* `)`
 ```
 
