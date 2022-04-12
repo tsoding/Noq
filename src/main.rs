@@ -586,22 +586,95 @@ fn expect_token_kind(lexer: &mut Lexer<impl Iterator<Item=char>>, kind: TokenKin
 }
 
 enum Command {
+    /// Define rule
+    ///
+    /// Example:
+    /// ```noq
+    /// sum_comm :: A + B = B + A
+    /// ```
     DefineRule(Loc, String, Rule),
+    /// Define rule via shaping
+    ///
+    /// Starts the process of shaping and defines a rule after it's done
+    ///
+    /// Example:
+    /// ```noq
+    /// sum_comm :: A + B { # <- the define rule via shaping command
+    ///   ...
+    /// }
+    /// ```
     DefineRuleViaShaping {
         loc: Loc,
         name: String,
         expr: Expr,
     },
+    /// Starting shaping
+    ///
+    /// Example:
+    /// ```noq
+    /// A + B { # <- the start shaping command
+    ///   ...
+    /// }
+    /// ```
     StartShaping(Loc, Expr),
+    /// Apply rule during shaping
+    ///
+    /// Example:
+    /// ```noq
+    /// name :: ... {
+    ///   ...
+    ///   all | sum_comm         # <- the apply rule command
+    ///   0   | :: A + B = B + A # <- another apply rule command
+    ///   ...
+    /// }
+    /// ```
     ApplyRule {
         loc: Loc,
         strategy_name: String,
         applied_rule: AppliedRule,
     },
+    /// Finish the process of shaping
+    ///
+    /// Example:
+    /// ```noq
+    /// A + B :: {
+    ///   ...
+    /// } # <- the finish shaping command
+    /// ```
     FinishShaping(Loc),
+    /// Undo previusly applied rule
+    ///
+    /// Example:
+    /// ```noq
+    /// A + B :: {
+    ///   ...
+    ///   undo # <- the undo command
+    ///   ...
+    /// }
+    /// ```
     UndoRule(Loc),
+    /// Quit command
+    ///
+    /// Example:
+    /// ```noq
+    /// quit
+    /// ```
     Quit,
+    /// Delete rule by name
+    ///
+    /// ```noq
+    /// sum_comm :: A + B = B + A
+    /// delete sum_comm # <- the delete command
+    /// ```
     DeleteRule(Loc, String),
+    /// Load file
+    ///
+    /// ```noq
+    /// load "std/std.noq" # <- the load command
+    ///
+    /// (a - a) + b {
+    ///   ...
+    /// ```
     Load(Loc, String),
 }
 
@@ -702,6 +775,7 @@ struct Context {
 impl Context {
     fn new() -> Self {
         let mut rules = HashMap::new();
+        // TODO: you can potentially `delete` the replace rule (you should not be able to do that)
         rules.insert("replace".to_string(), Rule::Replace);
         Self {
             rules,
