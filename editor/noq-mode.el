@@ -48,7 +48,7 @@
 
 (eval-and-compile
   (defconst noq-keywords
-    '("undo" "quit" "delete" "load")))
+    '("undo" "quit" "delete" "load" "save")))
 
 (defconst noq-highlights
   `((
