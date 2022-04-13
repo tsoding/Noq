@@ -82,7 +82,6 @@ enum SyntaxError {
 enum RuntimeError {
     RuleAlreadyExists(String, Loc, Option<Loc>),
     RuleDoesNotExist(String, Loc),
-    AlreadyShaping(Loc),
     NoShapingInPlace(Loc),
     NoHistory(Loc),
     UnknownStrategy(String, Loc),
@@ -604,7 +603,6 @@ enum Command {
     /// }
     /// ```
     DefineRuleViaShaping {
-        loc: Loc,
         name: String,
         expr: Expr,
     },
@@ -733,7 +731,6 @@ impl Command {
                                     TokenKind::OpenCurly =>  {
                                         lexer.next_token();
                                         Ok(Command::DefineRuleViaShaping {
-                                            loc: keyword.loc,
                                             name: name,
                                             expr: head
                                         })
@@ -764,11 +761,33 @@ impl Command {
     }
 }
 
+struct ShapingFrame {
+    expr: Expr,
+    history: Vec<Expr>,
+    rule_via_shaping: Option<(String, Expr)>,
+}
+
+impl ShapingFrame {
+    fn new(expr: Expr) -> Self {
+        Self {
+            expr,
+            history: Vec::new(),
+            rule_via_shaping: None,
+        }
+    }
+
+    fn new_rule_via_shaping(name: String, head: Expr) -> Self {
+        Self {
+            expr: head.clone(),
+            history: Vec::new(),
+            rule_via_shaping: Some((name, head.clone()))
+        }
+    }
+}
+
 struct Context {
     rules: HashMap<String, Rule>,
-    current_expr: Option<Expr>,
-    rule_via_shaping: Option<(String, Expr)>,
-    shaping_history: Vec<Expr>,
+    shaping_stack: Vec<ShapingFrame>,
     quit: bool,
 }
 
@@ -779,28 +798,8 @@ impl Context {
         rules.insert("replace".to_string(), Rule::Replace);
         Self {
             rules,
-            current_expr: None,
-            rule_via_shaping: None,
-            shaping_history: Vec::new(),
+            shaping_stack: Default::default(),
             quit: false,
-        }
-    }
-
-    fn materialize_applied_rule(&self, applied_rule: AppliedRule) -> Result<Rule, RuntimeError> {
-        match applied_rule {
-            AppliedRule::ByName {loc, name, reversed} => match self.rules.get(&name) {
-                Some(rule) => if reversed {
-                    match rule.clone() {
-                        Rule::User {loc, head, body} => Ok(Rule::User{loc, head: body, body: head}),
-                        Rule::Replace => Err(RuntimeError::IrreversibleRule(loc))
-                    }
-                } else {
-                    Ok(rule.clone())
-                }
-
-                None => Err(RuntimeError::RuleDoesNotExist(name, loc))
-            }
-            AppliedRule::Anonymous {loc, head, body} => Ok(Rule::User {loc, head, body}),
         }
     }
 
@@ -827,40 +826,47 @@ impl Context {
                 println!("defined rule `{}`", &rule_name);
                 self.rules.insert(rule_name, rule);
             }
-            Command::DefineRuleViaShaping{loc, name, expr, ..} => {
-                if self.current_expr.is_some() {
-                    return Err(RuntimeError::AlreadyShaping(loc).into())
-                }
+            Command::DefineRuleViaShaping{name, expr, ..} => {
                 println!(" => {}", &expr);
-                self.current_expr = Some(expr.clone());
-                self.rule_via_shaping = Some((name, expr));
+                self.shaping_stack.push(ShapingFrame::new_rule_via_shaping(name, expr))
             },
-            Command::StartShaping(loc, expr) => {
-                if self.current_expr.is_some() {
-                    return Err(RuntimeError::AlreadyShaping(loc).into())
-                }
+            Command::StartShaping(_loc, expr) => {
                 println!(" => {}", &expr);
-                self.current_expr = Some(expr);
+                self.shaping_stack.push(ShapingFrame::new(expr))
             },
             Command::ApplyRule {loc, strategy_name, applied_rule} => {
-                if let Some(expr) = &self.current_expr {
-                    let rule = self.materialize_applied_rule(applied_rule)?;
+                if let Some(frame) = self.shaping_stack.last_mut() {
+                    let rule =  match applied_rule {
+                        AppliedRule::ByName {loc, name, reversed} => match self.rules.get(&name) {
+                            Some(rule) => if reversed {
+                                match rule.clone() {
+                                    Rule::User {loc, head, body} => Rule::User{loc, head: body, body: head},
+                                    Rule::Replace => return Err(RuntimeError::IrreversibleRule(loc).into())
+                                }
+                            } else {
+                                rule.clone()
+                            }
+
+                            None => return Err(RuntimeError::RuleDoesNotExist(name, loc).into())
+                        }
+                        AppliedRule::Anonymous {loc, head, body} => Rule::User {loc, head, body},
+                    };
 
                     let new_expr = match Strategy::by_name(&strategy_name) {
-                        Some(strategy) => rule.apply(expr, &strategy, &loc)?,
+                        Some(strategy) => rule.apply(&frame.expr, &strategy, &loc)?,
                         None => return Err(RuntimeError::UnknownStrategy(strategy_name, loc).into())
                     };
                     println!(" => {}", &new_expr);
-                    self.shaping_history.push(
-                        self.current_expr.replace(new_expr).expect("current_expr must have something")
-                    );
+                    frame.history.push(new_expr.clone());
+                    frame.expr = new_expr;
                 } else {
                     return Err(RuntimeError::NoShapingInPlace(loc).into());
                 }
             }
             Command::FinishShaping(loc) => {
-                if let Some(body) = self.current_expr.take() {
-                    if let Some((name, head)) = self.rule_via_shaping.take() {
+                if let Some(mut frame) = self.shaping_stack.pop() {
+                    let body = frame.expr;
+                    if let Some((name, head)) = frame.rule_via_shaping.take() {
                         if let Some(existing_rule) = self.rules.get(&name) {
                             let old_loc = match existing_rule {
                                 Rule::User{loc, ..} => Some(loc.clone()),
@@ -871,16 +877,15 @@ impl Context {
                         println!("defined rule `{}`", &name);
                         self.rules.insert(name, Rule::User {loc, head, body});
                     }
-                    self.shaping_history.clear();
                 } else {
                     return Err(RuntimeError::NoShapingInPlace(loc).into())
                 }
             }
             Command::UndoRule(loc) => {
-                if self.current_expr.is_some() {
-                    if let Some(previous_expr) = self.shaping_history.pop() {
+                if let Some(frame) = self.shaping_stack.last_mut() {
+                    if let Some(previous_expr) = frame.history.pop() {
                         println!(" => {}", &previous_expr);
-                        self.current_expr.replace(previous_expr);
+                        frame.expr = previous_expr;
                     } else {
                         return Err(RuntimeError::NoHistory(loc).into())
                     }
@@ -973,9 +978,6 @@ fn report_error_in_repl(err: &Error, prompt: &str) {
                     }
                 }
             }
-            RuntimeError::AlreadyShaping(_loc) => {
-                eprintln!("ERROR: already shaping an expression. Finish the current shaping with {} first.", TokenKind::CloseCurly);
-            }
             RuntimeError::NoShapingInPlace(_loc) => {
                 eprintln!("ERROR: no shaping in place.");
             }
@@ -1039,10 +1041,6 @@ fn interpret_file(file_path: &str) {
                 Error::Runtime(RuntimeError::RuleDoesNotExist(name, loc)) => {
                     eprintln!("{}: ERROR: rule {} does not exist", loc, name);
                 }
-                Error::Runtime(RuntimeError::AlreadyShaping(loc)) => {
-                    eprintln!("{}: ERROR: already shaping an expression. Finish the current shaping with {} first.",
-                              loc, TokenKind::CloseCurly);
-                }
                 Error::Runtime(RuntimeError::NoShapingInPlace(loc)) => {
                     eprintln!("{}: ERROR: no shaping in place.", loc);
                 }
@@ -1075,15 +1073,16 @@ fn start_repl() {
     let mut command = String::new();
 
     let default_prompt = "noq> ";
-    let shaping_prompt = "> ";
+    let mut shaping_prompt;
     let mut prompt: &str;
 
     while !context.quit {
         command.clear();
-        if context.current_expr.is_some() {
-            prompt = shaping_prompt;
-        } else {
+        if context.shaping_stack.is_empty() {
             prompt = default_prompt;
+        } else {
+            shaping_prompt = format!("{}> ", context.shaping_stack.len());
+            prompt = &shaping_prompt;
         }
         print!("{}", prompt);
         stdout().flush().unwrap();
@@ -1094,6 +1093,10 @@ fn start_repl() {
                 .and_then(|()| expect_token_kind(&mut lexer, TokenKind::End).map_err(|e| e.into()));
             if let Err(err) = result {
                 report_error_in_repl(&err, prompt);
+            }
+        } else {
+            if let Some(frame) = context.shaping_stack.last() {
+                println!(" => {}", frame.expr);
             }
         }
     }
@@ -1163,7 +1166,6 @@ fn main() {
     }
 }
 
-// TODO: Nested shaping
 // TODO: Custom arbitrary operators like in Haskell
 // TODO: Save session to file
 // TODO: Conditional matching of rules. Some sort of ability to combine several rules into one which tries all the provided rules sequentially and pickes the one that matches
