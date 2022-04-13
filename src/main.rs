@@ -731,7 +731,7 @@ impl Command {
                                     TokenKind::OpenCurly =>  {
                                         lexer.next_token();
                                         Ok(Command::DefineRuleViaShaping {
-                                            name: name,
+                                            name,
                                             expr: head
                                         })
                                     }
@@ -742,19 +742,19 @@ impl Command {
                                             keyword.loc.clone(),
                                             name,
                                             Rule::User {
-                                                loc: keyword.loc.clone(),
+                                                loc: keyword.loc,
                                                 head,
                                                 body,
                                             }
                                         ))
                                     }
-                                    _ => Err(SyntaxError::ExpectedCommand(lexer.next_token()).into())
+                                    _ => Err(SyntaxError::ExpectedCommand(lexer.next_token()))
                                 }
                             }
                             _ => todo!("Report that we expected a symbol")
                         }
                     }
-                    _ => Err(SyntaxError::ExpectedCommand(lexer.next_token()).into())
+                    _ => Err(SyntaxError::ExpectedCommand(lexer.next_token()))
                 }
             }
         }
@@ -780,7 +780,7 @@ impl ShapingFrame {
         Self {
             expr: head.clone(),
             history: Vec::new(),
-            rule_via_shaping: Some((name, head.clone()))
+            rule_via_shaping: Some((name, head))
         }
     }
 }
@@ -1094,10 +1094,8 @@ fn start_repl() {
             if let Err(err) = result {
                 report_error_in_repl(&err, prompt);
             }
-        } else {
-            if let Some(frame) = context.shaping_stack.last() {
-                println!(" => {}", frame.expr);
-            }
+        } else if let Some(frame) = context.shaping_stack.last() {
+            println!(" => {}", frame.expr);
         }
     }
 }
