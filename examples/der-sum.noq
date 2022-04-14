@@ -1,13 +1,14 @@
 load "./std/std.noq"
 
-der_def :: der(F) = lim(dx, 0, (F(x + dx) - F(x))/dx)
-sum_def :: sum(X) = f(X) + g(X)
+der_def            :: der(F) = lim(dx, 0, (F(x + dx) - F(x))/dx)
+sum_def            :: sum(X) = f(X) + g(X)
+sum_sub_dist_lemma :: (A + B) - (C + D) = (A - C) + (B - D)
 
 der(sum) {
-  0   | der_def
-  all | sum_def
-  0   | :: (A + B) - (C + D) = (A - C) + (B - D)
-  0   | div_sum_dist
-  0   | lim_sum_dist
-  all | !der_def
+  der_def            |  0
+  sum_def            |  all
+  sum_sub_dist_lemma |  0
+  div_sum_dist       |  0
+  lim_sum_dist       |  0
+  der_def            |! all
 }

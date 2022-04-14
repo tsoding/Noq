@@ -22,15 +22,15 @@ div_sub_dist :: (A - B)/C = A/C - B/C
 div_sum_dist :: (A + B)/C = A/C + B/C
 
 square_of_sum :: (A + B)^2 {
-  all | square
-  all | mul_sum_dist
-  all | mul_comm
-  all | mul_sum_dist
-  0   | sum_assoc
-  1   | !sum_assoc
-  2   | mul_comm
-  0   | double_sum
-  all | !square
+  square       |  all
+  mul_sum_dist |  all
+  mul_comm     |  all
+  mul_sum_dist |  all
+  sum_assoc    |  0
+  sum_assoc    |! 1
+  mul_comm     |  2
+  double_sum   |  0
+  square       |! all
 }
 
 lim_def      :: lim(Var, Value, Expr)  = apply_rule(0, Var, Value, Expr)

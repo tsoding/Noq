@@ -3,22 +3,21 @@
 load "./std/std.noq"
 
 (2 + 3) {
-  0   | 3
-  all | 2
-  all | 1
-  all | sum
-  all | sum
-  all | sum_id
+  3      | 0
+  2      | all
+  1      | all
+  sum    | all
+  sum    | all
+  sum_id | all
 }
 
 (4 - 3) {
-  0   | 4
-  all | 3
-  all | 2
-  all | 1
-  all | sub
-  all | sub
-  all | sub
-  all | sub_id
+  4      | 0
+  3      | all
+  2      | all
+  1      | all
+  sub    | all
+  sub    | all
+  sub    | all
+  sub_id | all
 }
-

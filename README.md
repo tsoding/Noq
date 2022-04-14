@@ -54,7 +54,7 @@ For example here is how you shape expression `swap(pair(f(a), g(b)))` with the `
 
 ```
 swap(pair(f(a), g(b))) {
-  all | swap
+  swap | all
 }
 ```
 
@@ -62,10 +62,10 @@ The result of this shaping is `pair(g(b), f(a))`.
 
 ### Anonymous rules
 
-You don't have to define a rule to use it in shaping. You can directly describe it after the `|`:
+You don't have to define a rule to use it in shaping:
 
 ```
 swap(pair(f(a), g(b))) {
-  all | :: swap(pair(A, B)) = pair(B, A)
+  swap(pair(A, B)) = pair(B, A) | all
 }
 ```

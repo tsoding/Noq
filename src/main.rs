@@ -73,7 +73,6 @@ enum Expr {
 enum SyntaxError {
     ExpectedToken(TokenKind, Token),
     ExpectedPrimary(Token),
-    ExpectedAppliedRule(Token),
     ExpectedCommand(Token),
 }
 
@@ -122,42 +121,6 @@ enum AppliedRule {
         head: Expr,
         body: Expr,
     },
-}
-
-impl AppliedRule {
-    fn reversed(self) -> Self {
-        match self {
-            Self::ByName{loc, reversed, name} => Self::ByName {
-                loc,
-                reversed: !reversed,
-                name
-            },
-            Self::Anonymous{loc, head, body} => Self::Anonymous {
-                loc,
-                head: body,
-                body: head,
-            },
-        }
-    }
-
-    fn parse(lexer: &mut Lexer<impl Iterator<Item=char>>) -> Result<Self, SyntaxError> {
-        let token = lexer.next_token();
-        match token.kind {
-            TokenKind::Bang => Ok(Self::parse(lexer)?.reversed()),
-            TokenKind::DoubleColon => {
-                let head = Expr::parse(lexer)?;
-                expect_token_kind(lexer, TokenKind::Equals)?;
-                let body = Expr::parse(lexer)?;
-                Ok(AppliedRule::Anonymous{ loc: token.loc, head, body })
-            },
-            TokenKind::Ident => Ok(AppliedRule::ByName {
-                loc: token.loc,
-                name: token.text,
-                reversed: false,
-            }),
-            _ => Err(SyntaxError::ExpectedAppliedRule(token))
-        }
-    }
 }
 
 type Bindings = HashMap<String, Expr>;
@@ -624,8 +587,8 @@ enum Command {
     /// ```noq
     /// name :: ... {
     ///   ...
-    ///   all | sum_comm         # <- the apply rule command
-    ///   0   | :: A + B = B + A # <- another apply rule command
+    ///   sum_comm      | all # <- the apply rule command
+    ///   A + B = B + A | all # <- another apply rule command
     ///   ...
     /// }
     /// ```
@@ -722,17 +685,59 @@ impl Command {
 
                 match lexer.peek_token().kind {
                     TokenKind::Bar => {
-                        let keyword = lexer.next_token();
-                        if let Expr::Sym(strategy_name) = expr {
-                            let applied_rule = AppliedRule::parse(lexer)?;
+                        let bar = lexer.next_token();
+                        let (reversed, strategy_name_token) = {
+                            let token = lexer.next_token();
+                            if token.kind == TokenKind::Bang {
+                                (true, expect_token_kind(lexer, TokenKind::Ident)?)
+                            } else {
+                                (false, token)
+                            }
+                        };
+                        if let Expr::Sym(rule_name) = expr {
                             Ok(Command::ApplyRule {
-                                loc: keyword.loc,
-                                strategy_name,
-                                applied_rule,
+                                loc: bar.loc.clone(),
+                                strategy_name: strategy_name_token.text,
+                                applied_rule: AppliedRule::ByName {
+                                    loc: bar.loc,
+                                    name: rule_name,
+                                    reversed,
+                                },
                             })
                         } else {
-                            todo!("Report that we expected a symbol")
+                            todo!("Report applied rule must by symbol")
                         }
+                    }
+                    TokenKind::Equals => {
+                        let head = expr;
+                        let equals = lexer.next_token();
+                        let body = Expr::parse(lexer)?;
+                        expect_token_kind(lexer, TokenKind::Bar)?;
+                        let (reversed, strategy_name_token) = {
+                            let token = lexer.next_token();
+                            if token.kind == TokenKind::Bang {
+                                (true, expect_token_kind(lexer, TokenKind::Ident)?)
+                            } else {
+                                (false, token)
+                            }
+                        };
+                        Ok(Command::ApplyRule {
+                            loc: equals.loc.clone(),
+                            strategy_name: strategy_name_token.text,
+                            applied_rule: if reversed {
+                                AppliedRule::Anonymous {
+                                    loc: equals.loc,
+                                    head: body,
+                                    body: head,
+                                }
+                            } else {
+                                AppliedRule::Anonymous {
+                                    loc: equals.loc,
+                                    head,
+                                    body,
+                                }
+                            }
+                        })
                     }
                     TokenKind::OpenCurly  => {
                         let keyword = lexer.next_token();
@@ -825,6 +830,7 @@ impl Context {
         }
     }
 
+    // TODO: save history generates old syntax
     fn save_history(&self, file_path: &str) -> Result<(), io::Error> {
         let mut sink = fs::File::create(file_path)?;
         let mut indent = 0;
@@ -899,6 +905,7 @@ impl Context {
                 };
                 let mut lexer = Lexer::new(source.chars(), Some(file_path));
                 while lexer.peek_token().kind != TokenKind::End {
+                    // TODO: the processed command during the file loading should not be put into the history
                     self.process_command(Command::parse(&mut lexer)?)?
                 }
             }
@@ -1050,10 +1057,6 @@ fn report_error_in_repl(err: &Error, prompt: &str) {
                 eprint_repl_loc_cursor(prompt, &token.loc);
                 eprintln!("ERROR: expected Primary Expression (which is either functor, symbol or variable), but got {}", token.kind)
             }
-            SyntaxError::ExpectedAppliedRule(token) => {
-                eprint_repl_loc_cursor(prompt, &token.loc);
-                eprintln!("ERROR: expected applied rule argument, but got {}", token.kind)
-            }
             SyntaxError::ExpectedCommand(token) => {
                 eprint_repl_loc_cursor(prompt, &token.loc);
                 eprintln!("ERROR: expected command, but got {}", token.kind);
@@ -1119,9 +1122,6 @@ fn interpret_file(file_path: &str) {
                 }
                 Error::Syntax(SyntaxError::ExpectedPrimary(token)) => {
                     eprintln!("{}: ERROR: expected Primary Expression (which is either functor, symbol or variable), but got {}", token.loc, token.kind)
-                }
-                Error::Syntax(SyntaxError::ExpectedAppliedRule(token)) => {
-                    eprintln!("{}: ERROR: expected applied rule argument, but got {}", token.loc, token.kind)
                 }
                 Error::Syntax(SyntaxError::ExpectedCommand(token)) => {
                     eprintln!("{}: ERROR: expected command, but got {}", token.loc, token.kind)
