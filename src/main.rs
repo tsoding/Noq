@@ -1354,9 +1354,8 @@ fn start_new_repl() {
         match key.unwrap() {
             Key::Char('\n') => {
                 write!(stdout, "\r\n").unwrap();
-                match &new_cool_repl.take() as &str {
-                    "quit" => break,
-                    _ => {}
+                if &new_cool_repl.take() == "quit" {
+                    break
                 }
             }
             Key::Ctrl('a') | Key::Home => new_cool_repl.home(),
@@ -1368,14 +1367,11 @@ fn start_new_repl() {
             Key::Char(key) => {
                 new_cool_repl.insert_char(key);
                 new_cool_repl.popup.clear();
-                match parse_match(&mut Lexer::new(new_cool_repl.buffer.iter().cloned(), None)) {
-                    Ok((head, body)) => {
-                        let subexprs = find_all_subexprs(&head, &body);
-                        for subexpr in subexprs {
-                            new_cool_repl.popup.push(format!("{}", HighlightedSubexpr{expr: &body, subexpr}));
-                        }
-                    },
-                    Err(_) => {}
+                if let Ok((head, body)) = parse_match(&mut Lexer::new(new_cool_repl.buffer.iter().cloned(), None)) {
+                    let subexprs = find_all_subexprs(&head, &body);
+                    for subexpr in subexprs {
+                        new_cool_repl.popup.push(format!("{}", HighlightedSubexpr{expr: &body, subexpr}));
+                    }
                 }
             },
             Key::Backspace => new_cool_repl.backspace(),
