@@ -1365,13 +1365,39 @@ impl LineEditor {
         }
     }
 
-    fn left(&mut self) {
+    fn home(&mut self) {
+        self.cursor = 0;
+    }
+
+    fn end(&mut self) {
+        self.cursor = self.buffer.len();
+    }
+
+    fn left_word(&mut self) {
+        while self.cursor > 0 && self.cursor <= self.buffer.len() && !self.buffer.get(self.cursor - 1).unwrap().is_alphanumeric() {
+            self.cursor -= 1;
+        }
+        while self.cursor > 0 && self.cursor <= self.buffer.len() && self.buffer.get(self.cursor - 1).unwrap().is_alphanumeric() {
+            self.cursor -= 1;
+        }
+    }
+
+    fn right_word(&mut self) {
+        while self.cursor < self.buffer.len() && !self.buffer.get(self.cursor).unwrap().is_alphanumeric() {
+            self.cursor += 1;
+        }
+        while self.cursor < self.buffer.len() && self.buffer.get(self.cursor).unwrap().is_alphanumeric() {
+            self.cursor += 1;
+        }
+    }
+
+    fn left_char(&mut self) {
         if self.cursor > 0 {
             self.cursor -= 1;
         }
     }
 
-    fn right(&mut self) {
+    fn right_char(&mut self) {
         if self.cursor < self.buffer.len() {
             self.cursor += 1;
         }
@@ -1415,7 +1441,13 @@ fn start_new_repl() {
                     "quit" => break,
                     _ => {}
                 }
-            },
+            }
+            Key::Ctrl('a') | Key::Home => line_editor.home(),
+            Key::Ctrl('e') | Key::End => line_editor.end(),
+            Key::Ctrl('b') | Key::Left => line_editor.left_char(),
+            Key::Ctrl('f') | Key::Right => line_editor.right_char(),
+            Key::Alt('b') => line_editor.left_word(),
+            Key::Alt('f') => line_editor.right_word(),
             Key::Char(key) => {
                 line_editor.insert_char(key);
                 line_editor.popup.clear();
@@ -1429,8 +1461,6 @@ fn start_new_repl() {
                     Err(_) => {}
                 }
             },
-            Key::Left => line_editor.left(),
-            Key::Right => line_editor.right(),
             Key::Backspace => line_editor.backspace(),
             _ => {},
         }
