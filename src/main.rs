@@ -1247,6 +1247,88 @@ impl Config {
     }
 }
 
+use termion::color;
+
+fn find_all_subexprs<'a>(pattern: &'a Expr, expr: &'a Expr) -> Vec<&'a Expr> {
+    let mut subexprs = Vec::new();
+
+    fn find_all_subexprs_impl<'a>(pattern: &'a Expr, expr: &'a Expr, subexprs: &mut Vec<&'a Expr>) {
+        if pattern.pattern_match(expr).is_some() {
+            subexprs.push(expr);
+        }
+
+        match expr {
+            Expr::Fun(head, args) => {
+                find_all_subexprs_impl(pattern, head, subexprs);
+                for arg in args {
+                    find_all_subexprs_impl(pattern, arg, subexprs);
+                }
+            }
+            Expr::Op(_, lhs, rhs) => {
+                find_all_subexprs_impl(pattern, lhs, subexprs);
+                find_all_subexprs_impl(pattern, rhs, subexprs);
+            }
+            Expr::Sym(_) | Expr::Var(_) => {}
+        }
+    }
+
+    find_all_subexprs_impl(pattern, expr, &mut subexprs);
+    subexprs
+}
+
+struct HighlightedSubexpr<'a> {
+    expr: &'a Expr,
+    subexpr: &'a Expr
+}
+
+impl<'a> fmt::Display for HighlightedSubexpr<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let HighlightedSubexpr{expr, subexpr} = self;
+        if expr == subexpr {
+            write!(f, "{}{}{}", color::Fg(color::Green), expr, color::Fg(color::Reset))
+        } else {
+            match expr {
+                Expr::Sym(name) | Expr::Var(name) => write!(f, "{}", name),
+                Expr::Fun(head, args) => {
+                    match &**head {
+                        Expr::Sym(name) | Expr::Var(name) => write!(f, "{}", name)?,
+                        other => write!(f, "({})", HighlightedSubexpr{expr: other, subexpr})?,
+                    }
+                    write!(f, "(")?;
+                    for (i, arg) in args.iter().enumerate() {
+                        if i > 0 { write!(f, ", ")? }
+                        write!(f, "{}", HighlightedSubexpr{expr: arg, subexpr})?;
+                    }
+                    write!(f, ")")
+                },
+                Expr::Op(op, lhs, rhs) => {
+                    match **lhs {
+                        Expr::Op(sub_op, _, _) => if sub_op.precedence() <= op.precedence() {
+                            write!(f, "({})", HighlightedSubexpr{expr: lhs, subexpr})?
+                        } else {
+                            write!(f, "{}", HighlightedSubexpr{expr: lhs, subexpr})?
+                        }
+                        _ => write!(f, "{}", HighlightedSubexpr{expr: lhs, subexpr})?
+                    }
+                    if op.precedence() == 0 {
+                        write!(f, " {} ", op)?;
+                    } else {
+                        write!(f, "{}", op)?;
+                    }
+                    match **rhs {
+                        Expr::Op(sub_op, _, _) => if sub_op.precedence() <= op.precedence() {
+                            write!(f, "({})", HighlightedSubexpr{expr: rhs, subexpr})
+                        } else {
+                            write!(f, "{}", HighlightedSubexpr{expr: rhs, subexpr})
+                        }
+                        _ => write!(f, "{}", HighlightedSubexpr{expr: rhs, subexpr})
+                    }
+                }
+            }
+        }
+    }
+}
+
 fn main() {
     let config = Config::from_iter(&mut env::args());
 
