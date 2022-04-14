@@ -889,11 +889,11 @@ impl Context {
                 }
                 Command::Load(_, name) => {
                     pad(&mut sink, indent*2)?;
-                    writeln!(sink, "load {}", name)?
+                    writeln!(sink, "load \"{}\"", name)?
                 }
                 Command::Save(_, name) => {
                     pad(&mut sink, indent*2)?;
-                    writeln!(sink, "save {}", name)?
+                    writeln!(sink, "save \"{}\"", name)?
                 }
             }
         }
