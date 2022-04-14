@@ -1256,7 +1256,6 @@ impl Config {
     }
 }
 
-#[allow(dead_code)]
 fn find_all_subexprs<'a>(pattern: &'a Expr, expr: &'a Expr) -> Vec<&'a Expr> {
     let mut subexprs = Vec::new();
 
@@ -1408,16 +1407,16 @@ fn parse_match(lexer: &mut Lexer<impl Iterator<Item=char>>) -> Result<(Expr, Exp
 fn start_new_repl() {
     let prompt = "new> ";
     let mut stdout = stdout().into_raw_mode().unwrap();
-    let mut stdin = stdin();
-    write!(stdout, "{}", prompt);
-    stdout.flush();
+    let stdin = stdin();
+    write!(stdout, "{}", prompt).unwrap();
+    stdout.flush().unwrap();
 
     let mut line_editor: LineEditor = Default::default();
 
     for key in stdin.keys() {
         match key.unwrap() {
             Key::Char('\n') => {
-                write!(stdout, "\r\n");
+                write!(stdout, "\r\n").unwrap();
                 match &line_editor.take() as &str {
                     "quit" => break,
                     _ => {}
@@ -1441,8 +1440,8 @@ fn start_new_repl() {
             Key::Backspace => line_editor.backspace(),
             _ => {},
         }
-        line_editor.render(prompt, &mut stdout);
-        stdout.flush();
+        line_editor.render(prompt, &mut stdout).unwrap();
+        stdout.flush().unwrap();
     }
 }
 
