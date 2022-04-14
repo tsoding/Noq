@@ -1292,6 +1292,7 @@ impl<'a> fmt::Display for HighlightedSubexpr<'a> {
         if expr == subexpr {
             write!(f, "{}{}{}", color::Fg(color::Green), expr, color::Fg(color::Reset))
         } else {
+            // TODO: get rid of duplicate code in fmt::Display instance of HighlightedSubexpr and Expr
             match expr {
                 Expr::Sym(name) | Expr::Var(name) => write!(f, "{}", name),
                 Expr::Fun(head, args) => {
@@ -1402,4 +1403,3 @@ fn main() {
 }
 
 // TODO: Custom arbitrary operators like in Haskell
-// TODO: Autosuggestions in REPL
