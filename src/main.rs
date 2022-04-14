@@ -130,10 +130,8 @@ enum AppliedRule {
     },
 }
 
-type Bindings = HashMap<String, Expr>;
-
 impl Expr {
-    fn substitute(&self, bindings: &Bindings) -> Self {
+    fn substitute(&self, bindings: &HashMap<String, Expr>) -> Self {
         match self {
             Self::Sym(_) => self.clone(),
 
@@ -258,8 +256,8 @@ impl Expr {
         Self::parse_binary_operator(lexer, 0)
     }
 
-    fn pattern_match(&self, value: &Expr) -> Option<Bindings> {
-        fn pattern_match_impl(pattern: &Expr, value: &Expr, bindings: &mut Bindings) -> bool {
+    fn pattern_match(&self, value: &Expr) -> Option<HashMap<String, Expr>> {
+        fn pattern_match_impl(pattern: &Expr, value: &Expr, bindings: &mut HashMap<String, Expr>) -> bool {
             use Expr::*;
             match (pattern, value) {
                 (Sym(name1), Sym(name2)) => {
