@@ -1380,16 +1380,12 @@ impl LineEditor {
     fn render(&self, prompt: &str, sink: &mut impl Write) -> io::Result<()> {
         const POPUP_SIZE: usize = 5;
         let buffer: String = self.buffer.iter().collect();
-        write!(sink, "{}\r{}{}\r\n", clear::CurrentLine, prompt, &buffer)?;
-        for index in 0..POPUP_SIZE {
-            write!(sink, "{}", clear::CurrentLine)?;
-            if let Some(line) = self.popup.get(index) {
-                write!(sink, "{}", line)?;
-            }
-            write!(sink, "\r\n")?;
+        write!(sink, "\r{}{}{}\r\n", clear::AfterCursor, prompt, &buffer)?;
+        for line in self.popup.iter().take(POPUP_SIZE) {
+            write!(sink, "{}\r\n", line)?;
         }
-        write!(sink, "\r{}{}",
-               cursor::Up((POPUP_SIZE + 1).try_into().unwrap()),
+        write!(sink, "{}{}",
+               cursor::Up((POPUP_SIZE.min(self.popup.len()) + 1).try_into().unwrap()),
                cursor::Right((prompt.len() + self.cursor).try_into().unwrap()))?;
         Ok(())
     }
