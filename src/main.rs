@@ -1334,14 +1334,14 @@ impl<'a> fmt::Display for HighlightedSubexpr<'a> {
     }
 }
 
-fn parse_match(lexer: &mut Lexer<impl Iterator<Item=char>>) -> Result<(Expr, Expr), SyntaxError> {
-    let head = Expr::parse(lexer)?;
-    expect_token_kind(lexer, TokenKind::Equals)?;
-    let body = Expr::parse(lexer)?;
-    Ok((head, body))
-}
-
 fn start_new_repl() {
+    fn parse_match(lexer: &mut Lexer<impl Iterator<Item=char>>) -> Result<(Expr, Expr), SyntaxError> {
+        let head = Expr::parse(lexer)?;
+        expect_token_kind(lexer, TokenKind::Equals)?;
+        let body = Expr::parse(lexer)?;
+        Ok((head, body))
+    }
+
     let prompt = "new> ";
     let mut stdout = stdout().into_raw_mode().unwrap();
     let stdin = stdin();
