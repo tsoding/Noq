@@ -1335,13 +1335,13 @@ impl<'a> fmt::Display for HighlightedSubexpr<'a> {
 }
 
 #[derive(Default)]
-struct LineEditor {
+struct NewCoolRepl {
     buffer: Vec<char>,
     cursor: usize,
     popup: Vec<String>,
 }
 
-impl LineEditor {
+impl NewCoolRepl {
     fn clear(&mut self) {
         self.buffer.clear();
         self.cursor = 0;
@@ -1431,40 +1431,40 @@ fn start_new_repl() {
     write!(stdout, "{}", prompt).unwrap();
     stdout.flush().unwrap();
 
-    let mut line_editor: LineEditor = Default::default();
+    let mut new_cool_repl: NewCoolRepl = Default::default();
 
     for key in stdin.keys() {
         match key.unwrap() {
             Key::Char('\n') => {
                 write!(stdout, "\r\n").unwrap();
-                match &line_editor.take() as &str {
+                match &new_cool_repl.take() as &str {
                     "quit" => break,
                     _ => {}
                 }
             }
-            Key::Ctrl('a') | Key::Home => line_editor.home(),
-            Key::Ctrl('e') | Key::End => line_editor.end(),
-            Key::Ctrl('b') | Key::Left => line_editor.left_char(),
-            Key::Ctrl('f') | Key::Right => line_editor.right_char(),
-            Key::Alt('b') => line_editor.left_word(),
-            Key::Alt('f') => line_editor.right_word(),
+            Key::Ctrl('a') | Key::Home => new_cool_repl.home(),
+            Key::Ctrl('e') | Key::End => new_cool_repl.end(),
+            Key::Ctrl('b') | Key::Left => new_cool_repl.left_char(),
+            Key::Ctrl('f') | Key::Right => new_cool_repl.right_char(),
+            Key::Alt('b') => new_cool_repl.left_word(),
+            Key::Alt('f') => new_cool_repl.right_word(),
             Key::Char(key) => {
-                line_editor.insert_char(key);
-                line_editor.popup.clear();
-                match parse_match(&mut Lexer::new(line_editor.buffer.iter().cloned(), None)) {
+                new_cool_repl.insert_char(key);
+                new_cool_repl.popup.clear();
+                match parse_match(&mut Lexer::new(new_cool_repl.buffer.iter().cloned(), None)) {
                     Ok((head, body)) => {
                         let subexprs = find_all_subexprs(&head, &body);
                         for subexpr in subexprs {
-                            line_editor.popup.push(format!("{}", HighlightedSubexpr{expr: &body, subexpr}));
+                            new_cool_repl.popup.push(format!("{}", HighlightedSubexpr{expr: &body, subexpr}));
                         }
                     },
                     Err(_) => {}
                 }
             },
-            Key::Backspace => line_editor.backspace(),
+            Key::Backspace => new_cool_repl.backspace(),
             _ => {},
         }
-        line_editor.render(prompt, &mut stdout).unwrap();
+        new_cool_repl.render(prompt, &mut stdout).unwrap();
         stdout.flush().unwrap();
     }
 }
