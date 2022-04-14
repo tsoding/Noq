@@ -6,6 +6,13 @@ use std::env;
 use std::fs;
 use std::io;
 
+use termion::color;
+use termion::cursor;
+use termion::clear;
+use termion::raw::IntoRawMode;
+use termion::input::TermRead;
+use termion::event::Key;
+
 #[macro_use]
 mod lexer;
 
@@ -1199,6 +1206,7 @@ fn start_repl() {
 
 enum ReplMode {
     Normal,
+    DebugNew,
     DebugParser,
     DebugLexer,
 }
@@ -1223,6 +1231,7 @@ impl Config {
                         match mode_name.as_str() {
                             "parser" => config.mode = ReplMode::DebugParser,
                             "lexer" => config.mode = ReplMode::DebugLexer,
+                            "new" => config.mode = ReplMode::DebugNew,
                             _ => {
                                 eprintln!("ERROR: unknown debug mode {}", mode_name);
                                 std::process::exit(1)
@@ -1247,6 +1256,195 @@ impl Config {
     }
 }
 
+fn find_all_subexprs<'a>(pattern: &'a Expr, expr: &'a Expr) -> Vec<&'a Expr> {
+    let mut subexprs = Vec::new();
+
+    fn find_all_subexprs_impl<'a>(pattern: &'a Expr, expr: &'a Expr, subexprs: &mut Vec<&'a Expr>) {
+        if pattern.pattern_match(expr).is_some() {
+            subexprs.push(expr);
+        }
+
+        match expr {
+            Expr::Fun(head, args) => {
+                find_all_subexprs_impl(pattern, head, subexprs);
+                for arg in args {
+                    find_all_subexprs_impl(pattern, arg, subexprs);
+                }
+            }
+            Expr::Op(_, lhs, rhs) => {
+                find_all_subexprs_impl(pattern, lhs, subexprs);
+                find_all_subexprs_impl(pattern, rhs, subexprs);
+            }
+            Expr::Sym(_) | Expr::Var(_) => {}
+        }
+    }
+
+    find_all_subexprs_impl(pattern, expr, &mut subexprs);
+    subexprs
+}
+
+struct HighlightedSubexpr<'a> {
+    expr: &'a Expr,
+    subexpr: &'a Expr
+}
+
+impl<'a> fmt::Display for HighlightedSubexpr<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let HighlightedSubexpr{expr, subexpr} = self;
+        if expr == subexpr {
+            write!(f, "{}{}{}", color::Fg(color::Green), expr, color::Fg(color::Reset))
+        } else {
+            match expr {
+                Expr::Sym(name) | Expr::Var(name) => write!(f, "{}", name),
+                Expr::Fun(head, args) => {
+                    match &**head {
+                        Expr::Sym(name) | Expr::Var(name) => write!(f, "{}", name)?,
+                        other => write!(f, "({})", HighlightedSubexpr{expr: other, subexpr})?,
+                    }
+                    write!(f, "(")?;
+                    for (i, arg) in args.iter().enumerate() {
+                        if i > 0 { write!(f, ", ")? }
+                        write!(f, "{}", HighlightedSubexpr{expr: arg, subexpr})?;
+                    }
+                    write!(f, ")")
+                },
+                Expr::Op(op, lhs, rhs) => {
+                    match **lhs {
+                        Expr::Op(sub_op, _, _) => if sub_op.precedence() <= op.precedence() {
+                            write!(f, "({})", HighlightedSubexpr{expr: lhs, subexpr})?
+                        } else {
+                            write!(f, "{}", HighlightedSubexpr{expr: lhs, subexpr})?
+                        }
+                        _ => write!(f, "{}", HighlightedSubexpr{expr: lhs, subexpr})?
+                    }
+                    if op.precedence() == 0 {
+                        write!(f, " {} ", op)?;
+                    } else {
+                        write!(f, "{}", op)?;
+                    }
+                    match **rhs {
+                        Expr::Op(sub_op, _, _) => if sub_op.precedence() <= op.precedence() {
+                            write!(f, "({})", HighlightedSubexpr{expr: rhs, subexpr})
+                        } else {
+                            write!(f, "{}", HighlightedSubexpr{expr: rhs, subexpr})
+                        }
+                        _ => write!(f, "{}", HighlightedSubexpr{expr: rhs, subexpr})
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[derive(Default)]
+struct LineEditor {
+    buffer: Vec<char>,
+    cursor: usize,
+    popup: Vec<String>,
+}
+
+impl LineEditor {
+    fn clear(&mut self) {
+        self.buffer.clear();
+        self.cursor = 0;
+    }
+
+    fn take(&mut self) -> String {
+        let result = self.buffer.iter().collect();
+        self.clear();
+        result
+    }
+
+    fn insert_char(&mut self, x: char) {
+        self.buffer.insert(self.cursor, x);
+        self.cursor += 1;
+    }
+
+    fn backspace(&mut self) {
+        if self.cursor > 0 {
+            self.buffer.remove(self.cursor - 1);
+            self.cursor -= 1;
+        }
+    }
+
+    fn left(&mut self) {
+        if self.cursor > 0 {
+            self.cursor -= 1;
+        }
+    }
+
+    fn right(&mut self) {
+        if self.cursor < self.buffer.len() {
+            self.cursor += 1;
+        }
+    }
+
+    fn render(&self, prompt: &str, sink: &mut impl Write) -> io::Result<()> {
+        const POPUP_SIZE: usize = 5;
+        let buffer: String = self.buffer.iter().collect();
+        write!(sink, "{}\r{}{}\r\n", clear::CurrentLine, prompt, &buffer)?;
+        for index in 0..POPUP_SIZE {
+            write!(sink, "{}", clear::CurrentLine)?;
+            if let Some(line) = self.popup.get(index) {
+                write!(sink, "{}", line)?;
+            }
+            write!(sink, "\r\n")?;
+        }
+        write!(sink, "\r{}{}",
+               cursor::Up((POPUP_SIZE + 1).try_into().unwrap()),
+               cursor::Right((prompt.len() + self.cursor).try_into().unwrap()))?;
+        Ok(())
+    }
+}
+
+fn parse_match(lexer: &mut Lexer<impl Iterator<Item=char>>) -> Result<(Expr, Expr), SyntaxError> {
+    let head = Expr::parse(lexer)?;
+    expect_token_kind(lexer, TokenKind::Equals)?;
+    let body = Expr::parse(lexer)?;
+    Ok((head, body))
+}
+
+fn start_new_repl() {
+    let prompt = "new> ";
+    let mut stdout = stdout().into_raw_mode().unwrap();
+    let stdin = stdin();
+    write!(stdout, "{}", prompt).unwrap();
+    stdout.flush().unwrap();
+
+    let mut line_editor: LineEditor = Default::default();
+
+    for key in stdin.keys() {
+        match key.unwrap() {
+            Key::Char('\n') => {
+                write!(stdout, "\r\n").unwrap();
+                match &line_editor.take() as &str {
+                    "quit" => break,
+                    _ => {}
+                }
+            },
+            Key::Char(key) => {
+                line_editor.insert_char(key);
+                line_editor.popup.clear();
+                match parse_match(&mut Lexer::new(line_editor.buffer.iter().cloned(), None)) {
+                    Ok((head, body)) => {
+                        let subexprs = find_all_subexprs(&head, &body);
+                        for subexpr in subexprs {
+                            line_editor.popup.push(format!("{}", HighlightedSubexpr{expr: &body, subexpr}));
+                        }
+                    },
+                    Err(_) => {}
+                }
+            },
+            Key::Left => line_editor.left(),
+            Key::Right => line_editor.right(),
+            Key::Backspace => line_editor.backspace(),
+            _ => {},
+        }
+        line_editor.render(prompt, &mut stdout).unwrap();
+        stdout.flush().unwrap();
+    }
+}
+
 fn main() {
     let config = Config::from_iter(&mut env::args());
 
@@ -1255,6 +1453,7 @@ fn main() {
     } else {
         match config.mode {
             ReplMode::Normal => start_repl(),
+            ReplMode::DebugNew => start_new_repl(),
             ReplMode::DebugParser => start_parser_debugger(),
             ReplMode::DebugLexer => start_lexer_debugger(),
         }
