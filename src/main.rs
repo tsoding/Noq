@@ -1362,6 +1362,10 @@ fn start_new_repl() {
             Key::Ctrl('e') | Key::End => new_cool_repl.end(),
             Key::Ctrl('b') | Key::Left => new_cool_repl.left_char(),
             Key::Ctrl('f') | Key::Right => new_cool_repl.right_char(),
+            Key::Ctrl('c') => {
+                write!(stdout, "^C\r\n").unwrap();
+                break;
+            }
             Key::Alt('b') => new_cool_repl.left_word(),
             Key::Alt('f') => new_cool_repl.right_word(),
             Key::Char(key) => {
