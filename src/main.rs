@@ -7,16 +7,16 @@ use std::fs;
 use std::io;
 
 use termion::color;
-use termion::cursor;
-use termion::clear;
 use termion::raw::IntoRawMode;
 use termion::input::TermRead;
 use termion::event::Key;
 
 #[macro_use]
 mod lexer;
+mod repl;
 
 use lexer::*;
+use repl::*;
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 enum Op {
@@ -1331,89 +1331,6 @@ impl<'a> fmt::Display for HighlightedSubexpr<'a> {
                 }
             }
         }
-    }
-}
-
-#[derive(Default)]
-struct NewCoolRepl {
-    buffer: Vec<char>,
-    cursor: usize,
-    popup: Vec<String>,
-}
-
-impl NewCoolRepl {
-    fn clear(&mut self) {
-        self.buffer.clear();
-        self.cursor = 0;
-    }
-
-    fn take(&mut self) -> String {
-        let result = self.buffer.iter().collect();
-        self.clear();
-        result
-    }
-
-    fn insert_char(&mut self, x: char) {
-        self.buffer.insert(self.cursor, x);
-        self.cursor += 1;
-    }
-
-    fn backspace(&mut self) {
-        if self.cursor > 0 {
-            self.buffer.remove(self.cursor - 1);
-            self.cursor -= 1;
-        }
-    }
-
-    fn home(&mut self) {
-        self.cursor = 0;
-    }
-
-    fn end(&mut self) {
-        self.cursor = self.buffer.len();
-    }
-
-    fn left_word(&mut self) {
-        while self.cursor > 0 && self.cursor <= self.buffer.len() && !self.buffer.get(self.cursor - 1).unwrap().is_alphanumeric() {
-            self.cursor -= 1;
-        }
-        while self.cursor > 0 && self.cursor <= self.buffer.len() && self.buffer.get(self.cursor - 1).unwrap().is_alphanumeric() {
-            self.cursor -= 1;
-        }
-    }
-
-    fn right_word(&mut self) {
-        while self.cursor < self.buffer.len() && !self.buffer.get(self.cursor).unwrap().is_alphanumeric() {
-            self.cursor += 1;
-        }
-        while self.cursor < self.buffer.len() && self.buffer.get(self.cursor).unwrap().is_alphanumeric() {
-            self.cursor += 1;
-        }
-    }
-
-    fn left_char(&mut self) {
-        if self.cursor > 0 {
-            self.cursor -= 1;
-        }
-    }
-
-    fn right_char(&mut self) {
-        if self.cursor < self.buffer.len() {
-            self.cursor += 1;
-        }
-    }
-
-    fn render(&self, prompt: &str, sink: &mut impl Write) -> io::Result<()> {
-        const POPUP_SIZE: usize = 5;
-        let buffer: String = self.buffer.iter().collect();
-        write!(sink, "\r{}{}{}\r\n", clear::AfterCursor, prompt, &buffer)?;
-        for line in self.popup.iter().take(POPUP_SIZE) {
-            write!(sink, "{}\r\n", line)?;
-        }
-        write!(sink, "{}{}",
-               cursor::Up((POPUP_SIZE.min(self.popup.len()) + 1).try_into().unwrap()),
-               cursor::Right((prompt.len() + self.cursor).try_into().unwrap()))?;
-        Ok(())
     }
 }
 
