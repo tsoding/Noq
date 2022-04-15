@@ -928,6 +928,7 @@ fn start_repl() {
             if let Err(err) = result {
                 report_error_in_repl(&err, prompt);
             } else {
+                // TODO: check on the unparsed input must be done inside of parse_and_process_command()
                 if let Err(token) = lexer.expect_token(TokenKind::End) {
                     eprint_repl_loc_cursor(prompt, &token.loc);
                     eprintln!("ERROR: expected {} after the end of a command, but got {}", TokenKind::End, token.kind);
