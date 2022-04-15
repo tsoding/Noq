@@ -990,13 +990,13 @@ impl Config {
     }
 }
 
-enum MatchSyntaxError {
-    Head(expr::SyntaxError),
-    Separator(Token),
-    Body(expr::SyntaxError),
-}
-
 fn start_new_cool_repl() {
+    enum MatchSyntaxError {
+        Head(expr::SyntaxError),
+        Separator(Token),
+        Body(expr::SyntaxError),
+    }
+
     fn parse_match(lexer: &mut Lexer<impl Iterator<Item=char>>) -> Result<(Expr, Expr), MatchSyntaxError> {
         let head = Expr::parse(lexer).map_err(MatchSyntaxError::Head)?;
         lexer.expect_token(TokenKind::Equals).map_err(MatchSyntaxError::Separator)?;
