@@ -1,12 +1,11 @@
 use std::collections::HashMap;
 use std::io::{stdin, stdout};
 use std::io::Write;
-use std::fmt;
 use std::env;
 use std::fs;
 use std::io;
+use std::fmt;
 
-use termion::color;
 use termion::raw::IntoRawMode;
 use termion::input::TermRead;
 use termion::event::Key;
@@ -14,73 +13,74 @@ use termion::event::Key;
 #[macro_use]
 mod lexer;
 mod repl;
+#[macro_use]
+mod expr;
 
 use lexer::*;
 use repl::*;
-
-#[derive(Debug, Copy, Clone, PartialEq)]
-enum Op {
-    Add,
-    Sub,
-    Mul,
-    Div,
-    Pow,
-    Mod,
-}
-
-impl Op {
-    const MAX_PRECEDENCE: usize = 2;
-
-    fn from_token_kind(kind: TokenKind) -> Option<Self> {
-        match kind {
-            TokenKind::Plus => Some(Op::Add),
-            TokenKind::Dash => Some(Op::Sub),
-            TokenKind::Asterisk => Some(Op::Mul),
-            TokenKind::Slash => Some(Op::Div),
-            TokenKind::Caret => Some(Op::Pow),
-            TokenKind::Percent => Some(Op::Mod),
-            _ => None
-        }
-    }
-
-    fn precedence(&self) -> usize {
-        use Op::*;
-        match self {
-            Add | Sub       => 0,
-            Mul | Div | Mod => 1,
-            Pow             => 2,
-        }
-    }
-}
-
-impl fmt::Display for Op {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Op::Add => write!(f, "+"),
-            Op::Sub => write!(f, "-"),
-            Op::Mul => write!(f, "*"),
-            Op::Div => write!(f, "/"),
-            Op::Mod => write!(f, "%"),
-            Op::Pow => write!(f, "^"),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-enum Expr {
-    Sym(String),
-    Var(String),
-    Fun(Box<Expr>, Vec<Expr>),
-    Op(Op, Box<Expr>, Box<Expr>),
-}
+use expr::*;
 
 #[derive(Debug)]
-#[allow(clippy::enum_variant_names)]
-/// An error that happens during parsing the Noq source code
-enum SyntaxError {
-    ExpectedToken(TokenKind, Token),
-    ExpectedPrimary(Token),
-    ExpectedCommand(Token),
+enum CommandSyntaxError {
+    LoadArg(Token),
+    SaveArg(Token),
+    DeleteArg(Token),
+    /// Failed to parse the start of the command.
+    ///
+    /// The start of the command is always an expression. The specific
+    /// command is determined by a token after the expression.
+    CommandStart(expr::SyntaxError),
+    /// Failed to parse the command separator.
+    ///
+    /// The command separator comes after the starting expression of
+    /// the command and determines the command itself.
+    CommandSep(Token),
+    StrategyName(Token),
+    AnonymousRuleBody(expr::SyntaxError),
+    AnonymousRuleWithoutStrategy(Token),
+    DefineRuleHead(expr::SyntaxError),
+    DefineRuleBody(expr::SyntaxError),
+    DefineRuleSep(Token),
+}
+
+impl CommandSyntaxError {
+    fn loc(&self) -> &Loc {
+        match self {
+            Self::LoadArg(token) |
+            Self::SaveArg(token) |
+            Self::DeleteArg(token) |
+            Self::CommandSep(token) |
+            Self::StrategyName(token) |
+            Self::AnonymousRuleWithoutStrategy(token) |
+            Self::DefineRuleSep(token) => &token.loc,
+
+            Self::CommandStart(expr_err) |
+            Self::AnonymousRuleBody(expr_err) |
+            Self::DefineRuleHead(expr_err) |
+            Self::DefineRuleBody(expr_err) => expr_err.loc(),
+        }
+    }
+}
+
+impl fmt::Display for CommandSyntaxError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::LoadArg(token) => write!(f, "`load` Command Argument must be {}, but got {} instead", TokenKind::Str, token),
+            Self::SaveArg(token) => write!(f, "`save` Command Argument must be {}, but got {} instead", TokenKind::Str, token),
+            Self::DeleteArg(token) => write!(f, "`delete` Command Argument must be {}, but got {} instead", TokenKind::Ident, token),
+            // TODO: report what are the valid command separators
+            Self::CommandSep(token) => write!(f, "expected Command Separator, but got {} instead", token),
+            Self::StrategyName(token) => write!(f, "Strategy Name must be {}, but got {} instead", TokenKind::Ident, token),
+            Self::AnonymousRuleWithoutStrategy(token) => write!(f, "expected {} after the Anonymous Rule, but got {}", TokenKind::Bar, token.kind),
+            // TODO: report what are the valid rule definition separators
+            Self::DefineRuleSep(token) => write!(f, "unexpected Rule Definition Separator {}", token),
+
+            Self::CommandStart(expr_err) => write!(f, "invalid Starting Expression of the Command: {}", expr_err),
+            Self::AnonymousRuleBody(expr_err) => write!(f, "invalid Body of the Anonymous Rule: {}", expr_err),
+            Self::DefineRuleHead(expr_err) => write!(f, "invalid Head of the Rule Definition: {}", expr_err),
+            Self::DefineRuleBody(expr_err) => write!(f, "invalid Body of the Rule Definition: {}", expr_err),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -101,12 +101,12 @@ enum RuntimeError {
 #[derive(Debug)]
 enum Error {
     Runtime(RuntimeError),
-    Syntax(SyntaxError),
+    CommandSyntax(CommandSyntaxError),
 }
 
-impl From<SyntaxError> for Error {
-    fn from(err: SyntaxError) -> Self {
-        Self::Syntax(err)
+impl From<CommandSyntaxError> for Error {
+    fn from(err: CommandSyntaxError) -> Self {
+        Self::CommandSyntax(err)
     }
 }
 
@@ -128,254 +128,6 @@ enum AppliedRule {
         head: Expr,
         body: Expr,
     },
-}
-
-impl Expr {
-    fn substitute(&self, bindings: &HashMap<String, Expr>) -> Self {
-        match self {
-            Self::Sym(_) => self.clone(),
-
-            Self::Var(name) => {
-                if let Some(value) = bindings.get(name) {
-                    value.clone()
-                } else {
-                    self.clone()
-                }
-            }
-
-            Self::Op(op, lhs, rhs) => {
-                Self::Op(
-                    *op,
-                    Box::new(lhs.substitute(bindings)),
-                    Box::new(rhs.substitute(bindings))
-                )
-            },
-
-            Self::Fun(head, args) => {
-                let new_head = head.substitute(bindings);
-                let mut new_args = Vec::new();
-                for arg in args {
-                    new_args.push(arg.substitute(bindings))
-                }
-                Self::Fun(Box::new(new_head), new_args)
-            }
-        }
-    }
-
-    pub fn var_or_sym_based_on_name(name: &str) -> Self {
-        let x = name.chars().next().expect("Empty names are not allowed. This might be a bug in the lexer.");
-        if x.is_uppercase() || x == '_' {
-            Self::Var(name.to_string())
-        } else {
-            Self::Sym(name.to_string())
-        }
-    }
-
-
-    pub fn human_name(&self) -> &'static str {
-        match self {
-            Self::Sym(_) => "a symbol",
-            Self::Var(_) => "a variable",
-            Self::Fun(_, _) => "a functor",
-            Self::Op(_, _, _) => "a binary operator",
-        }
-    }
-
-    fn parse_fun_args(lexer: &mut Lexer<impl Iterator<Item=char>>) -> Result<Vec<Self>, SyntaxError> {
-        use TokenKind::*;
-        let mut args = Vec::new();
-        expect_token_kind(lexer, OpenParen)?;
-        if lexer.peek_token().kind == CloseParen {
-            lexer.next_token();
-            return Ok(args)
-        }
-        args.push(Self::parse(lexer)?);
-        while lexer.peek_token().kind == Comma {
-            lexer.next_token();
-            args.push(Self::parse(lexer)?);
-        }
-        let close_paren = lexer.next_token();
-        if close_paren.kind == CloseParen {
-            Ok(args)
-        } else {
-            Err(SyntaxError::ExpectedToken(CloseParen, close_paren))
-        }
-    }
-
-    fn parse_fun_or_var_or_sym(lexer: &mut Lexer<impl Iterator<Item=char>>) -> Result<Self, SyntaxError> {
-        let mut head = {
-            let token = lexer.peek_token().clone();
-            match token.kind {
-                TokenKind::OpenParen => {
-                    lexer.next_token();
-                    let result = Self::parse(lexer)?;
-                    expect_token_kind(lexer, TokenKind::CloseParen)?;
-                    result
-                }
-
-                TokenKind::Ident => {
-                    lexer.next_token();
-                    Self::var_or_sym_based_on_name(&token.text)
-                },
-
-                _ => return Err(SyntaxError::ExpectedPrimary(token))
-            }
-        };
-
-        while lexer.peek_token().kind == TokenKind::OpenParen {
-            head = Expr::Fun(Box::new(head), Self::parse_fun_args(lexer)?)
-        }
-        Ok(head)
-    }
-
-    fn parse_binary_operator(lexer: &mut Lexer<impl Iterator<Item=char>>, current_precedence: usize) -> Result<Self, SyntaxError> {
-        if current_precedence > Op::MAX_PRECEDENCE {
-            return Self::parse_fun_or_var_or_sym(lexer)
-        }
-
-        let mut result = Self::parse_binary_operator(lexer, current_precedence + 1)?;
-
-        while let Some(op) = Op::from_token_kind(lexer.peek_token().kind) {
-            if current_precedence != op.precedence() {
-                break
-            }
-
-            lexer.next_token();
-
-            result = Expr::Op(
-                op,
-                Box::new(result),
-                Box::new(Self::parse_binary_operator(lexer, current_precedence)?)
-            );
-        }
-
-        Ok(result)
-    }
-
-    pub fn parse(lexer: &mut Lexer<impl Iterator<Item=char>>) -> Result<Self, SyntaxError> {
-        Self::parse_binary_operator(lexer, 0)
-    }
-
-    fn pattern_match(&self, value: &Expr) -> Option<HashMap<String, Expr>> {
-        fn pattern_match_impl(pattern: &Expr, value: &Expr, bindings: &mut HashMap<String, Expr>) -> bool {
-            use Expr::*;
-            match (pattern, value) {
-                (Sym(name1), Sym(name2)) => {
-                    name1 == name2
-                }
-                (Var(name), _) => {
-                    if name == "_" {
-                        true
-                    } else if let Some(bound_value) = bindings.get(name) {
-                        bound_value == value
-                    } else {
-                        bindings.insert(name.clone(), value.clone());
-                        true
-                    }
-                }
-                (Op(op1, lhs1, rhs1), Op(op2, lhs2, rhs2)) => {
-                    *op1 == *op2 && pattern_match_impl(lhs1, lhs2, bindings) && pattern_match_impl(rhs1, rhs2, bindings)
-                }
-                (Fun(name1, args1), Fun(name2, args2)) => {
-                    if pattern_match_impl(name1, name2, bindings) && args1.len() == args2.len() {
-                        for i in 0..args1.len() {
-                            if !pattern_match_impl(&args1[i], &args2[i], bindings) {
-                                return false;
-                            }
-                        }
-                        true
-                    } else {
-                        false
-                    }
-                },
-                _ => false,
-            }
-        }
-
-        let mut bindings = HashMap::new();
-
-        if pattern_match_impl(self, value, &mut bindings) {
-            Some(bindings)
-        } else {
-            None
-        }
-    }
-}
-
-#[allow(unused_macros)]
-macro_rules! fun_args {
-    () => { vec![] };
-    ($name:ident) => { vec![expr!($name)] };
-    ($name:ident,$($rest:tt)*) => {
-        {
-            let mut t = vec![expr!($name)];
-            t.append(&mut fun_args!($($rest)*));
-            t
-        }
-    };
-    ($name:ident($($args:tt)*)) => {
-        vec![expr!($name($($args)*))]
-    };
-    ($name:ident($($args:tt)*),$($rest:tt)*) => {
-        {
-            let mut t = vec![expr!($name($($args)*))];
-            t.append(&mut fun_args!($($rest)*));
-            t
-        }
-    }
-}
-
-#[allow(unused_macros)]
-macro_rules! expr {
-    ($name:ident) => {
-        Expr::var_or_sym_based_on_name(stringify!($name))
-    };
-    ($name:ident($($args:tt)*)) => {
-        Expr::Fun(Box::new(Expr::var_or_sym_based_on_name(stringify!($name))), fun_args!($($args)*))
-    };
-}
-
-impl fmt::Display for Expr {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Expr::Sym(name) | Expr::Var(name) => write!(f, "{}", name),
-            Expr::Fun(head, args) => {
-                match &**head {
-                    Expr::Sym(name) | Expr::Var(name) => write!(f, "{}", name)?,
-                    other => write!(f, "({})", other)?,
-                }
-                write!(f, "(")?;
-                for (i, arg) in args.iter().enumerate() {
-                    if i > 0 { write!(f, ", ")? }
-                    write!(f, "{}", arg)?;
-                }
-                write!(f, ")")
-            },
-            Expr::Op(op, lhs, rhs) => {
-                match **lhs {
-                    Expr::Op(sub_op, _, _) => if sub_op.precedence() <= op.precedence() {
-                        write!(f, "({})", lhs)?
-                    } else {
-                        write!(f, "{}", lhs)?
-                    }
-                    _ => write!(f, "{}", lhs)?
-                }
-                if op.precedence() == 0 {
-                    write!(f, " {} ", op)?;
-                } else {
-                    write!(f, "{}", op)?;
-                }
-                match **rhs {
-                    Expr::Op(sub_op, _, _) => if sub_op.precedence() <= op.precedence() {
-                        write!(f, "({})", rhs)
-                    } else {
-                        write!(f, "{}", rhs)
-                    }
-                    _ => write!(f, "{}", rhs)
-                }
-            }
-        }
-    }
 }
 
 enum Action {
@@ -545,15 +297,6 @@ impl Rule {
     }
 }
 
-fn expect_token_kind(lexer: &mut Lexer<impl Iterator<Item=char>>, kind: TokenKind) -> Result<Token, SyntaxError> {
-    let token = lexer.next_token();
-    if kind == token.kind {
-        Ok(token)
-    } else {
-        Err(SyntaxError::ExpectedToken(kind, token))
-    }
-}
-
 #[derive(Clone)]
 enum Command {
     /// Define rule
@@ -656,17 +399,17 @@ enum Command {
 }
 
 impl Command {
-    fn parse(lexer: &mut Lexer<impl Iterator<Item=char>>) -> Result<Command, SyntaxError> {
+    fn parse(lexer: &mut Lexer<impl Iterator<Item=char>>) -> Result<Command, CommandSyntaxError> {
         let keyword_kind = lexer.peek_token().kind;
         match keyword_kind {
             TokenKind::Load => {
                 lexer.next_token();
-                let token = expect_token_kind(lexer, TokenKind::Str)?;
+                let token = lexer.expect_token(TokenKind::Str).map_err(CommandSyntaxError::LoadArg)?;
                 Ok(Self::Load(token.loc, token.text))
             },
             TokenKind::Save => {
                 lexer.next_token();
-                let token = expect_token_kind(lexer, TokenKind::Str)?;
+                let token = lexer.expect_token(TokenKind::Str).map_err(CommandSyntaxError::SaveArg)?;
                 Ok(Self::Save(token.loc, token.text))
             }
             TokenKind::CloseCurly => {
@@ -683,10 +426,11 @@ impl Command {
             }
             TokenKind::Delete => {
                 let keyword = lexer.next_token();
-                Ok(Command::DeleteRule(keyword.loc, expect_token_kind(lexer, TokenKind::Ident)?.text))
+                let name = lexer.expect_token(TokenKind::Ident).map_err(CommandSyntaxError::DeleteArg)?.text;
+                Ok(Command::DeleteRule(keyword.loc, name))
             }
             _ => {
-                let expr = Expr::parse(lexer)?;
+                let expr = Expr::parse(lexer).map_err(CommandSyntaxError::CommandStart)?;
 
                 match lexer.peek_token().kind {
                     TokenKind::Bar => {
@@ -694,9 +438,11 @@ impl Command {
                         let (reversed, strategy_name_token) = {
                             let token = lexer.next_token();
                             if token.kind == TokenKind::Bang {
-                                (true, expect_token_kind(lexer, TokenKind::Ident)?)
-                            } else {
+                                (true, lexer.expect_token(TokenKind::Ident).map_err(CommandSyntaxError::StrategyName)?)
+                            } else if token.kind == TokenKind::Ident {
                                 (false, token)
+                            } else {
+                                return Err(CommandSyntaxError::StrategyName(token))
                             }
                         };
                         if let Expr::Sym(rule_name) = expr {
@@ -716,14 +462,16 @@ impl Command {
                     TokenKind::Equals => {
                         let head = expr;
                         let equals = lexer.next_token();
-                        let body = Expr::parse(lexer)?;
-                        expect_token_kind(lexer, TokenKind::Bar)?;
+                        let body = Expr::parse(lexer).map_err(CommandSyntaxError::AnonymousRuleBody)?;
+                        lexer.expect_token(TokenKind::Bar).map_err(CommandSyntaxError::AnonymousRuleWithoutStrategy)?;
                         let (reversed, strategy_name_token) = {
                             let token = lexer.next_token();
                             if token.kind == TokenKind::Bang {
-                                (true, expect_token_kind(lexer, TokenKind::Ident)?)
-                            } else {
+                                (true, lexer.expect_token(TokenKind::Ident).map_err(CommandSyntaxError::StrategyName)?)
+                            } else if token.kind == TokenKind::Ident {
                                 (false, token)
+                            } else {
+                                return Err(CommandSyntaxError::StrategyName(token))
                             }
                         };
                         Ok(Command::ApplyRule {
@@ -752,7 +500,7 @@ impl Command {
                         let keyword = lexer.next_token();
                         match expr {
                             Expr::Sym(name) => {
-                                let head = Expr::parse(lexer)?;
+                                let head = Expr::parse(lexer).map_err(CommandSyntaxError::DefineRuleHead)?;
                                 match lexer.peek_token().kind {
                                     TokenKind::OpenCurly =>  {
                                         lexer.next_token();
@@ -763,7 +511,7 @@ impl Command {
                                     }
                                     TokenKind::Equals => {
                                         lexer.next_token();
-                                        let body = Expr::parse(lexer)?;
+                                        let body = Expr::parse(lexer).map_err(CommandSyntaxError::DefineRuleBody)?;
                                         Ok(Command::DefineRule(
                                             keyword.loc.clone(),
                                             name,
@@ -774,13 +522,13 @@ impl Command {
                                             }
                                         ))
                                     }
-                                    _ => Err(SyntaxError::ExpectedCommand(lexer.next_token()))
+                                    _ => Err(CommandSyntaxError::DefineRuleSep(lexer.next_token()))
                                 }
                             }
                             _ => todo!("Report that we expected a symbol")
                         }
                     }
-                    _ => Err(SyntaxError::ExpectedCommand(lexer.next_token()))
+                    _ => Err(CommandSyntaxError::CommandSep(lexer.next_token()))
                 }
             }
         }
@@ -1039,7 +787,10 @@ fn start_parser_debugger() {
         let mut lexer = Lexer::new(command.trim().chars(), None);
         if lexer.peek_token().kind != TokenKind::End {
             match Expr::parse(&mut lexer) {
-                Err(err) => report_error_in_repl(&err.into(), prompt),
+                Err(err) => {
+                    eprint_repl_loc_cursor(prompt, err.loc());
+                    eprintln!("ERROR: {}", err);
+                },
                 Ok(expr) => {
                     println!("  Display:  {}", expr);
                     println!("  Debug:    {:?}", expr);
@@ -1052,19 +803,9 @@ fn start_parser_debugger() {
 
 fn report_error_in_repl(err: &Error, prompt: &str) {
     match err {
-        Error::Syntax(err) => match err {
-            SyntaxError::ExpectedToken(expected, actual) => {
-                eprint_repl_loc_cursor(prompt, &actual.loc);
-                eprintln!("ERROR: expected {} but got {} '{}'", expected, actual.kind, actual.text);
-            }
-            SyntaxError::ExpectedPrimary(token) => {
-                eprint_repl_loc_cursor(prompt, &token.loc);
-                eprintln!("ERROR: expected Primary Expression (which is either functor, symbol or variable), but got {}", token.kind)
-            }
-            SyntaxError::ExpectedCommand(token) => {
-                eprint_repl_loc_cursor(prompt, &token.loc);
-                eprintln!("ERROR: expected command, but got {}", token.kind);
-            }
+        Error::CommandSyntax(err) => {
+            eprint_repl_loc_cursor(prompt, err.loc());
+            eprintln!("ERROR: {}", err);
         }
 
         Error::Runtime(err) => match err {
@@ -1120,15 +861,8 @@ fn interpret_file(file_path: &str) {
     while !context.quit && lexer.peek_token().kind != TokenKind::End {
         if let Err(err) = parse_and_process_command(&mut context, &mut lexer) {
             match err {
-                Error::Syntax(SyntaxError::ExpectedToken(expected_kinds, actual_token)) => {
-                    eprintln!("{}: ERROR: expected {} but got {} '{}'",
-                              actual_token.loc, expected_kinds, actual_token.kind, actual_token.text);
-                }
-                Error::Syntax(SyntaxError::ExpectedPrimary(token)) => {
-                    eprintln!("{}: ERROR: expected Primary Expression (which is either functor, symbol or variable), but got {}", token.loc, token.kind)
-                }
-                Error::Syntax(SyntaxError::ExpectedCommand(token)) => {
-                    eprintln!("{}: ERROR: expected command, but got {}", token.loc, token.kind)
+                Error::CommandSyntax(err) => {
+                    eprintln!("{}: ERROR: {}", err.loc(), err);
                 }
                 Error::Runtime(RuntimeError::RuleAlreadyExists(name, new_loc, old_loc)) => {
                     eprintln!("{}: ERROR: redefinition of existing rule {}", new_loc, name);
@@ -1190,10 +924,14 @@ fn start_repl() {
         stdin().read_line(&mut command).unwrap();
         let mut lexer = Lexer::new(command.trim().chars(), None);
         if lexer.peek_token().kind != TokenKind::End {
-            let result = parse_and_process_command(&mut context, &mut lexer)
-                .and_then(|()| expect_token_kind(&mut lexer, TokenKind::End).map_err(|e| e.into()));
+            let result = parse_and_process_command(&mut context, &mut lexer);
             if let Err(err) = result {
                 report_error_in_repl(&err, prompt);
+            } else {
+                if let Err(token) = lexer.expect_token(TokenKind::End) {
+                    eprint_repl_loc_cursor(prompt, &token.loc);
+                    eprintln!("ERROR: expected {} after the end of a command, but got {}", TokenKind::End, token.kind);
+                }
             }
         } else if let Some(frame) = context.shaping_stack.last() {
             println!(" => {}", frame.expr);
@@ -1253,92 +991,17 @@ impl Config {
     }
 }
 
-fn find_all_subexprs<'a>(pattern: &'a Expr, expr: &'a Expr) -> Vec<&'a Expr> {
-    let mut subexprs = Vec::new();
-
-    fn find_all_subexprs_impl<'a>(pattern: &'a Expr, expr: &'a Expr, subexprs: &mut Vec<&'a Expr>) {
-        if pattern.pattern_match(expr).is_some() {
-            subexprs.push(expr);
-        }
-
-        match expr {
-            Expr::Fun(head, args) => {
-                find_all_subexprs_impl(pattern, head, subexprs);
-                for arg in args {
-                    find_all_subexprs_impl(pattern, arg, subexprs);
-                }
-            }
-            Expr::Op(_, lhs, rhs) => {
-                find_all_subexprs_impl(pattern, lhs, subexprs);
-                find_all_subexprs_impl(pattern, rhs, subexprs);
-            }
-            Expr::Sym(_) | Expr::Var(_) => {}
-        }
-    }
-
-    find_all_subexprs_impl(pattern, expr, &mut subexprs);
-    subexprs
-}
-
-struct HighlightedSubexpr<'a> {
-    expr: &'a Expr,
-    subexpr: &'a Expr
-}
-
-impl<'a> fmt::Display for HighlightedSubexpr<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let HighlightedSubexpr{expr, subexpr} = self;
-        if expr == subexpr {
-            write!(f, "{}{}{}", color::Fg(color::Green), expr, color::Fg(color::Reset))
-        } else {
-            // TODO: get rid of duplicate code in fmt::Display instance of HighlightedSubexpr and Expr
-            match expr {
-                Expr::Sym(name) | Expr::Var(name) => write!(f, "{}", name),
-                Expr::Fun(head, args) => {
-                    match &**head {
-                        Expr::Sym(name) | Expr::Var(name) => write!(f, "{}", name)?,
-                        other => write!(f, "({})", HighlightedSubexpr{expr: other, subexpr})?,
-                    }
-                    write!(f, "(")?;
-                    for (i, arg) in args.iter().enumerate() {
-                        if i > 0 { write!(f, ", ")? }
-                        write!(f, "{}", HighlightedSubexpr{expr: arg, subexpr})?;
-                    }
-                    write!(f, ")")
-                },
-                Expr::Op(op, lhs, rhs) => {
-                    match **lhs {
-                        Expr::Op(sub_op, _, _) => if sub_op.precedence() <= op.precedence() {
-                            write!(f, "({})", HighlightedSubexpr{expr: lhs, subexpr})?
-                        } else {
-                            write!(f, "{}", HighlightedSubexpr{expr: lhs, subexpr})?
-                        }
-                        _ => write!(f, "{}", HighlightedSubexpr{expr: lhs, subexpr})?
-                    }
-                    if op.precedence() == 0 {
-                        write!(f, " {} ", op)?;
-                    } else {
-                        write!(f, "{}", op)?;
-                    }
-                    match **rhs {
-                        Expr::Op(sub_op, _, _) => if sub_op.precedence() <= op.precedence() {
-                            write!(f, "({})", HighlightedSubexpr{expr: rhs, subexpr})
-                        } else {
-                            write!(f, "{}", HighlightedSubexpr{expr: rhs, subexpr})
-                        }
-                        _ => write!(f, "{}", HighlightedSubexpr{expr: rhs, subexpr})
-                    }
-                }
-            }
-        }
-    }
+enum MatchSyntaxError {
+    Head(expr::SyntaxError),
+    Separator(Token),
+    Body(expr::SyntaxError),
 }
 
 fn start_new_cool_repl() {
-    fn parse_match(lexer: &mut Lexer<impl Iterator<Item=char>>) -> Result<(Expr, Expr), SyntaxError> {
-        let head = Expr::parse(lexer)?;
-        expect_token_kind(lexer, TokenKind::Equals)?;
-        let body = Expr::parse(lexer)?;
+    fn parse_match(lexer: &mut Lexer<impl Iterator<Item=char>>) -> Result<(Expr, Expr), MatchSyntaxError> {
+        let head = Expr::parse(lexer).map_err(MatchSyntaxError::Head)?;
+        lexer.expect_token(TokenKind::Equals).map_err(MatchSyntaxError::Separator)?;
+        let body = Expr::parse(lexer).map_err(MatchSyntaxError::Body)?;
         Ok((head, body))
     }
 

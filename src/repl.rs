@@ -1,8 +1,12 @@
 use std::io::Write;
 use std::io;
+use std::fmt;
 
 use termion::clear;
 use termion::cursor;
+use termion::color;
+
+use super::expr::*;
 
 #[derive(Default)]
 pub struct NewCoolRepl {
@@ -104,5 +108,59 @@ impl NewCoolRepl {
                cursor::Up((POPUP_SIZE.min(self.popup.len()) + 1).try_into().unwrap()),
                cursor::Right((prompt.len() + self.buffer_cursor).try_into().unwrap()))?;
         Ok(())
+    }
+}
+
+pub struct HighlightedSubexpr<'a> {
+    pub expr: &'a Expr,
+    pub subexpr: &'a Expr
+}
+
+impl<'a> fmt::Display for HighlightedSubexpr<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let HighlightedSubexpr{expr, subexpr} = self;
+        if expr == subexpr {
+            write!(f, "{}{}{}", color::Fg(color::Green), expr, color::Fg(color::Reset))
+        } else {
+            // TODO: get rid of duplicate code in fmt::Display instance of HighlightedSubexpr and Expr
+            match expr {
+                Expr::Sym(name) | Expr::Var(name) => write!(f, "{}", name),
+                Expr::Fun(head, args) => {
+                    match &**head {
+                        Expr::Sym(name) | Expr::Var(name) => write!(f, "{}", name)?,
+                        other => write!(f, "({})", HighlightedSubexpr{expr: other, subexpr})?,
+                    }
+                    write!(f, "(")?;
+                    for (i, arg) in args.iter().enumerate() {
+                        if i > 0 { write!(f, ", ")? }
+                        write!(f, "{}", HighlightedSubexpr{expr: arg, subexpr})?;
+                    }
+                    write!(f, ")")
+                },
+                Expr::Op(op, lhs, rhs) => {
+                    match **lhs {
+                        Expr::Op(sub_op, _, _) => if sub_op.precedence() <= op.precedence() {
+                            write!(f, "({})", HighlightedSubexpr{expr: lhs, subexpr})?
+                        } else {
+                            write!(f, "{}", HighlightedSubexpr{expr: lhs, subexpr})?
+                        }
+                        _ => write!(f, "{}", HighlightedSubexpr{expr: lhs, subexpr})?
+                    }
+                    if op.precedence() == 0 {
+                        write!(f, " {} ", op)?;
+                    } else {
+                        write!(f, "{}", op)?;
+                    }
+                    match **rhs {
+                        Expr::Op(sub_op, _, _) => if sub_op.precedence() <= op.precedence() {
+                            write!(f, "({})", HighlightedSubexpr{expr: rhs, subexpr})
+                        } else {
+                            write!(f, "{}", HighlightedSubexpr{expr: rhs, subexpr})
+                        }
+                        _ => write!(f, "{}", HighlightedSubexpr{expr: rhs, subexpr})
+                    }
+                }
+            }
+        }
     }
 }

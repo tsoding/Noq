@@ -117,6 +117,16 @@ pub struct Token {
     pub loc: Loc,
 }
 
+impl fmt::Display for Token {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if self.text.is_empty() {
+            write!(f, "{}", self.kind)
+        } else {
+            write!(f, "{} `{}`", self.kind, self.text)
+        }
+    }
+}
+
 pub struct Lexer<Chars: Iterator<Item=char>> {
     chars: Peekable<Chars>,
     peeked: Option<Token>,
@@ -145,6 +155,15 @@ impl<Chars: Iterator<Item=char>> Lexer<Chars> {
             file_path: self.file_path.clone(),
             row: self.lnum + 1,
             col: self.cnum - self.bol + 1,
+        }
+    }
+
+    pub fn expect_token(&mut self, kind: TokenKind) -> Result<Token, Token> {
+        let token = self.next_token();
+        if kind == token.kind {
+            Ok(token)
+        } else {
+            Err(token)
         }
     }
 
