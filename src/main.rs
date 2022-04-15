@@ -92,7 +92,7 @@ enum RuntimeError {
     RuleAlreadyExists(String, Loc, Option<Loc>),
     RuleDoesNotExist(String, Loc),
     NoShapingInPlace(Loc),
-    NoHistory(Loc),
+    EndOfHistory(Loc),
     UnknownStrategy(String, Loc),
     IrreversibleRule(Loc),
     StrategyIsNotSym(Expr, Loc),
@@ -101,10 +101,62 @@ enum RuntimeError {
     CouldNotSaveFile(Loc, io::Error),
 }
 
+impl fmt::Display for RuntimeError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::RuleAlreadyExists(name, _new_loc, _old_loc) => write!(f, "redefinition of existing rule {}", name),
+            Self::NoShapingInPlace(_loc) => write!(f, "no shaping in place."),
+            Self::RuleDoesNotExist(name, _loc) => write!(f, "rule {} does not exist", name),
+            Self::EndOfHistory(_loc) => write!(f, "end of history"),
+            Self::UnknownStrategy(name, _loc) => write!(f, "unknown rule application strategy '{}'", name),
+            Self::IrreversibleRule(_loc) => write!(f, "irreversible rule"),
+            Self::StrategyIsNotSym(expr, _loc) => write!(f, "strategy must be a symbol but got {} {}", expr.human_name(), &expr),
+            Self::NoMatch(_loc) => write!(f, "no match found"),
+            Self::CouldNotLoadFile(_loc, err) => write!(f, "could not load file {:?}", err),
+            Self::CouldNotSaveFile(_loc, err) => write!(f, "could not save file {:?}", err),
+        }
+    }
+}
+
+impl RuntimeError {
+    fn loc(&self) -> &Loc {
+        match self {
+            Self::RuleAlreadyExists(_, loc, _) |
+            Self::RuleDoesNotExist(_, loc) |
+            Self::NoShapingInPlace(loc) |
+            Self::EndOfHistory(loc) |
+            Self::UnknownStrategy(_, loc) |
+            Self::IrreversibleRule(loc) |
+            Self::StrategyIsNotSym(_, loc) |
+            Self::NoMatch(loc) |
+            Self::CouldNotLoadFile(loc, _) |
+            Self::CouldNotSaveFile(loc, _) => loc,
+        }
+    }
+}
+
 #[derive(Debug)]
 enum Error {
     Runtime(RuntimeError),
     CommandSyntax(CommandSyntaxError),
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::Runtime(err) => write!(f, "{}", err),
+            Self::CommandSyntax(err) => write!(f, "{}", err),
+        }
+    }
+}
+
+impl Error {
+    fn loc(&self) -> &Loc {
+        match self {
+            Self::Runtime(err) => err.loc(),
+            Self::CommandSyntax(err) => err.loc(),
+        }
+    }
 }
 
 impl From<CommandSyntaxError> for Error {
@@ -736,7 +788,7 @@ impl Context {
                         println!(" => {}", &previous_expr);
                         frame.expr = previous_expr;
                     } else {
-                        return Err(RuntimeError::NoHistory(loc).into())
+                        return Err(RuntimeError::EndOfHistory(loc).into())
                     }
                 } else {
                     return Err(RuntimeError::NoShapingInPlace(loc).into())
@@ -804,56 +856,16 @@ fn start_parser_debugger() {
     }
 }
 
-fn report_error_in_repl(err: &Error, prompt: &str) {
-    match err {
-        Error::CommandSyntax(err) => {
-            eprint_repl_loc_cursor(prompt, err.loc());
-            eprintln!("ERROR: {}", err);
-        }
 
-        Error::Runtime(err) => match err {
-            RuntimeError::RuleAlreadyExists(name, _new_loc, old_loc) => {
-                eprintln!("ERROR: redefinition of existing rule {}", name);
-                if let Some(loc) = old_loc {
-                    if loc.file_path.is_some() {
-                        eprintln!("{}: Previous definition is located here", loc);
-                    }
-                }
-            }
-            RuntimeError::NoShapingInPlace(_loc) => {
-                eprintln!("ERROR: no shaping in place.");
-            }
-            RuntimeError::RuleDoesNotExist(name, _loc) => {
-                eprintln!("ERROR: rule {} does not exist", name);
-            }
-            RuntimeError::NoHistory(_loc) => {
-                eprintln!("ERROR: no history");
-            }
-            RuntimeError::UnknownStrategy(name, _loc) => {
-                eprintln!("ERROR: unknown rule application strategy '{}'", name);
-            }
-            RuntimeError::IrreversibleRule(_loc) => {
-                eprintln!("ERROR: irreversible rule");
-            }
-            RuntimeError::StrategyIsNotSym(expr, _loc) => {
-                eprintln!("ERROR: strategy must be a symbol but got {} {}", expr.human_name(), &expr);
-            }
-            RuntimeError::NoMatch(_loc) => {
-                eprintln!("ERROR: no match found");
-            }
-            RuntimeError::CouldNotLoadFile(_loc, err) => {
-                eprintln!("ERROR: could not load file {:?}", err)
-            }
-            RuntimeError::CouldNotSaveFile(_loc, err) => {
-                eprintln!("ERROR: could not save file {:?}", err)
-            }
-        }
-    }
+fn repl_parse_and_process_command(context: &mut Context, lexer: &mut Lexer<impl Iterator<Item=char>>) -> Result<(), Error> {
+    let command = Command::parse(lexer)?;
+    lexer.expect_token(TokenKind::End).map_err(CommandSyntaxError::UnparsedInput)?;
+    context.process_command(command)?;
+    Ok(())
 }
 
 fn parse_and_process_command(context: &mut Context, lexer: &mut Lexer<impl Iterator<Item=char>>) -> Result<(), Error> {
     let command = Command::parse(lexer)?;
-    lexer.expect_token(TokenKind::End).map_err(CommandSyntaxError::UnparsedInput)?;
     context.process_command(command)?;
     Ok(())
 }
@@ -864,42 +876,10 @@ fn interpret_file(file_path: &str) {
     let mut lexer = Lexer::new(source.chars(), Some(file_path.to_string()));
     while !context.quit && lexer.peek_token().kind != TokenKind::End {
         if let Err(err) = parse_and_process_command(&mut context, &mut lexer) {
-            match err {
-                Error::CommandSyntax(err) => {
-                    eprintln!("{}: ERROR: {}", err.loc(), err);
-                }
-                Error::Runtime(RuntimeError::RuleAlreadyExists(name, new_loc, old_loc)) => {
-                    eprintln!("{}: ERROR: redefinition of existing rule {}", new_loc, name);
-                    if let Some(loc) = old_loc {
-                        eprintln!("{}: Previous definition is located here", loc);
-                    }
-                }
-                Error::Runtime(RuntimeError::RuleDoesNotExist(name, loc)) => {
-                    eprintln!("{}: ERROR: rule {} does not exist", loc, name);
-                }
-                Error::Runtime(RuntimeError::NoShapingInPlace(loc)) => {
-                    eprintln!("{}: ERROR: no shaping in place.", loc);
-                }
-                Error::Runtime(RuntimeError::NoHistory(loc)) => {
-                    eprintln!("{}: ERROR: no history", loc);
-                }
-                Error::Runtime(RuntimeError::UnknownStrategy(name, loc)) => {
-                    eprintln!("{}: ERROR: unknown rule application strategy '{}'", loc, name);
-                }
-                Error::Runtime(RuntimeError::IrreversibleRule(loc)) => {
-                    eprintln!("{}: ERROR: irreversible rule", loc);
-                }
-                Error::Runtime(RuntimeError::StrategyIsNotSym(expr, loc)) => {
-                    eprintln!("{}: ERROR: strategy must be a symbol but got {} `{}`", loc, expr.human_name(), &expr);
-                }
-                Error::Runtime(RuntimeError::NoMatch(loc)) => {
-                    eprintln!("{}: ERROR: no match", loc);
-                }
-                Error::Runtime(RuntimeError::CouldNotLoadFile(loc, err)) => {
-                    eprintln!("{}: ERROR: could not load file {:?}", loc, err);
-                }
-                Error::Runtime(RuntimeError::CouldNotSaveFile(loc, err)) => {
-                    eprintln!("{}: ERROR: could not save file {:?}", loc, err);
+            eprintln!("{}: ERROR: {}", err.loc(), err);
+            if let Error::Runtime(RuntimeError::RuleAlreadyExists(_, _, Some(prev_loc))) = err {
+                if prev_loc.file_path.is_some() {
+                    eprintln!("{}: previous declaration is located here", prev_loc)
                 }
             }
             std::process::exit(1);
@@ -928,9 +908,14 @@ fn start_repl() {
         stdin().read_line(&mut command).unwrap();
         let mut lexer = Lexer::new(command.trim().chars(), None);
         if lexer.peek_token().kind != TokenKind::End {
-            let result = parse_and_process_command(&mut context, &mut lexer);
-            if let Err(err) = result {
-                report_error_in_repl(&err, prompt);
+            if let Err(err) = repl_parse_and_process_command(&mut context, &mut lexer) {
+                eprint_repl_loc_cursor(prompt, err.loc());
+                eprintln!("ERROR: {}", err);
+                if let Error::Runtime(RuntimeError::RuleAlreadyExists(_, _, Some(prev_loc))) = err {
+                    if prev_loc.file_path.is_some() {
+                        eprintln!("{}: previous declaration is located here", prev_loc)
+                    }
+                }
             }
         } else if let Some(frame) = context.shaping_stack.last() {
             println!(" => {}", frame.expr);
