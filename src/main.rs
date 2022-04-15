@@ -41,6 +41,7 @@ enum CommandSyntaxError {
     DefineRuleHead(expr::SyntaxError),
     DefineRuleBody(expr::SyntaxError),
     DefineRuleSep(Token),
+    UnparsedInput(Token),
 }
 
 impl CommandSyntaxError {
@@ -52,6 +53,7 @@ impl CommandSyntaxError {
             Self::CommandSep(token) |
             Self::StrategyName(token) |
             Self::AnonymousRuleWithoutStrategy(token) |
+            Self::UnparsedInput(token) |
             Self::DefineRuleSep(token) => &token.loc,
 
             Self::CommandStart(expr_err) |
@@ -75,6 +77,7 @@ impl fmt::Display for CommandSyntaxError {
             // TODO: report what are the valid rule definition separators
             Self::DefineRuleSep(token) => write!(f, "unexpected Rule Definition Separator {}", token),
 
+            Self::UnparsedInput(token) => write!(f, "unexpected token {} after the End of the Command", token),
             Self::CommandStart(expr_err) => write!(f, "invalid Starting Expression of the Command: {}", expr_err),
             Self::AnonymousRuleBody(expr_err) => write!(f, "invalid Body of the Anonymous Rule: {}", expr_err),
             Self::DefineRuleHead(expr_err) => write!(f, "invalid Head of the Rule Definition: {}", expr_err),
@@ -850,6 +853,7 @@ fn report_error_in_repl(err: &Error, prompt: &str) {
 
 fn parse_and_process_command(context: &mut Context, lexer: &mut Lexer<impl Iterator<Item=char>>) -> Result<(), Error> {
     let command = Command::parse(lexer)?;
+    lexer.expect_token(TokenKind::End).map_err(CommandSyntaxError::UnparsedInput)?;
     context.process_command(command)?;
     Ok(())
 }
@@ -927,12 +931,6 @@ fn start_repl() {
             let result = parse_and_process_command(&mut context, &mut lexer);
             if let Err(err) = result {
                 report_error_in_repl(&err, prompt);
-            } else {
-                // TODO: check on the unparsed input must be done inside of parse_and_process_command()
-                if let Err(token) = lexer.expect_token(TokenKind::End) {
-                    eprint_repl_loc_cursor(prompt, &token.loc);
-                    eprintln!("ERROR: expected {} after the end of a command, but got {}", TokenKind::End, token.kind);
-                }
             }
         } else if let Some(frame) = context.shaping_stack.last() {
             println!(" => {}", frame.expr);
