@@ -21,6 +21,8 @@ mul_assoc    :: A*(B*C) = (A*B)*C
 div_sub_dist :: (A - B)/C = A/C - B/C
 div_sum_dist :: (A + B)/C = A/C + B/C
 
+pow :: A^s(B) = A*A^B
+
 square_of_sum :: (A + B)^2 {
   square       |  all
   mul_sum_dist |  all

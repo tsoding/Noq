@@ -1,0 +1,21 @@
+load "std/std.noq"
+
+cube_of_sum :: (A + B)^3 {
+  3             |  0
+  pow           |  0
+  square_of_sum |  0
+  mul_sum_dist  |  0
+  mul_comm      |  0
+  mul_sum_dist  |  0
+  mul_comm      |  0
+  pow           |! 0
+  3             |! 0
+  mul_sum_dist  |  0
+  mul_comm      |  1
+  mul_sum_dist  |  0
+  mul_comm      |  8
+  mul_sum_dist  |  0
+  mul_comm      |  8
+  pow           |! 0
+  3             |! 0
+# TODO: cube_of_sum is not finished yet
