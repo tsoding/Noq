@@ -58,6 +58,7 @@ pub enum TokenKind {
     Slash,
     Caret,
     Percent,
+    EqualsEquals,
 
     // Terminators
     Invalid,
@@ -93,6 +94,7 @@ impl fmt::Display for TokenKind {
             CloseCurly => write!(f, "close curly"),
             Comma => write!(f, "comma"),
             Equals => write!(f, "equals"),
+            EqualsEquals => write!(f, "double equals"),
             Colon => write!(f, "colon"),
             DoubleColon => write!(f, "double colon"),
             Percent => write!(f, "percent"),
@@ -215,7 +217,13 @@ impl<Chars: Iterator<Item=char>> Lexer<Chars> {
                     '(' => Token {kind: TokenKind::OpenParen,  text, loc},
                     ')' => Token {kind: TokenKind::CloseParen, text, loc},
                     ',' => Token {kind: TokenKind::Comma,      text, loc},
-                    '=' => Token {kind: TokenKind::Equals,     text, loc},
+                    '=' => if self.chars.next_if(|x| *x == '=').is_some() {
+                        self.cnum += 1;
+                        text.push('=');
+                        Token {kind: TokenKind::EqualsEquals, text, loc}
+                    } else {
+                        Token {kind: TokenKind::Equals,     text, loc}
+                    },
                     ':' => if self.chars.next_if(|x| *x == ':').is_some() {
                         self.cnum += 1;
                         text.push(':');

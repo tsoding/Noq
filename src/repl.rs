@@ -146,7 +146,7 @@ impl<'a> fmt::Display for HighlightedSubexpr<'a> {
                         }
                         _ => write!(f, "{}", HighlightedSubexpr{expr: lhs, subexpr})?
                     }
-                    if op.precedence() == 0 {
+                    if op.precedence() <= 1 {
                         write!(f, " {} ", op)?;
                     } else {
                         write!(f, "{}", op)?;

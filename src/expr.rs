@@ -41,11 +41,10 @@ pub enum Op {
     Div,
     Pow,
     Mod,
+    Eql,
 }
 
 impl Op {
-    const MAX_PRECEDENCE: usize = 2;
-
     fn from_token_kind(kind: TokenKind) -> Option<Self> {
         match kind {
             TokenKind::Plus => Some(Op::Add),
@@ -54,6 +53,7 @@ impl Op {
             TokenKind::Slash => Some(Op::Div),
             TokenKind::Caret => Some(Op::Pow),
             TokenKind::Percent => Some(Op::Mod),
+            TokenKind::EqualsEquals => Some(Op::Eql),
             _ => None
         }
     }
@@ -61,16 +61,20 @@ impl Op {
     pub fn precedence(&self) -> usize {
         use Op::*;
         match self {
-            Add | Sub       => 0,
-            Mul | Div | Mod => 1,
-            Pow             => 2,
+            Eql             => 0,
+            Add | Sub       => 1,
+            Mul | Div | Mod => 2,
+            Pow             => 3,
         }
     }
+
+    const MAX_PRECEDENCE: usize = 3;
 }
 
 impl fmt::Display for Op {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
+            Op::Eql => write!(f, "=="),
             Op::Add => write!(f, "+"),
             Op::Sub => write!(f, "-"),
             Op::Mul => write!(f, "*"),
@@ -332,7 +336,7 @@ impl fmt::Display for Expr {
                     }
                     _ => write!(f, "{}", lhs)?
                 }
-                if op.precedence() == 0 {
+                if op.precedence() <= 1 {
                     write!(f, " {} ", op)?;
                 } else {
                     write!(f, "{}", op)?;
