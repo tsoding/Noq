@@ -66,7 +66,7 @@
     ("\\(^\\|[^a-zA-Z0-9_]\\)\\([_A-Z][_a-zA-Z0-9]*\\)" 2 'font-lock-variable-name-face)
 
     ;; Functor names
-    ("\\([^\n\| ]*\\)[!\t ]*::" 1 'font-lock-function-name-face)
+    ("\\([^\n\| ]*\\)[\t ]*::" 1 'font-lock-function-name-face)
     ))
 
 ;;;###autoload
