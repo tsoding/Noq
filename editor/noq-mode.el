@@ -56,15 +56,17 @@
     ,(regexp-opt noq-keywords 'words) . 'font-lock-keyword-face)
 
     ;; `Apply` strategies
-    (,(format "\\(%s\\)[\t ]*|" (mapconcat 'regexp-quote noq-apply-strategies "\\|"))
+    (,(format ".*|[\!\t ]*\\(%s\\)" (mapconcat 'regexp-quote noq-apply-strategies "\\|"))
      1 'font-lock-type-face)
-    ("\\([0-9]+\\)[\t ]*|" 1 'font-lock-type-face)
+    (".*|[\!\t ]*\\([0-9]+\\)" 1 'font-lock-type-face)
+    ;; Reverse
+    ("\!" . 'font-lock-keyword-face)
 
     ;; Variables
     ("\\(^\\|[^a-zA-Z0-9_]\\)\\([_A-Z][_a-zA-Z0-9]*\\)" 2 'font-lock-variable-name-face)
 
     ;; Functor names
-    ("\\([^\n\| ]*\\)[\t ]*::" 1 'font-lock-function-name-face)
+    ("\\([^\n\| ]*\\)[!\t ]*::" 1 'font-lock-function-name-face)
     ))
 
 ;;;###autoload
