@@ -638,6 +638,10 @@ impl Context {
         }
     }
 
+    fn calculate_padding(&self) -> usize {
+        self.rules.keys().map(|s| s.len()).max().unwrap_or(0) + 1
+    }
+
     fn save_history(&self, file_path: &str) -> Result<(), io::Error> {
         let mut sink = fs::File::create(file_path)?;
         let mut indent = 0;
@@ -728,29 +732,37 @@ impl Context {
                 self.rules.insert(rule_name, rule);
             }
             Command::DefineRuleViaShaping{name, expr, ..} => {
-                println!(" => {}", &expr);
+                let width = self.calculate_padding();
+                println!("apply {name:width$} => {}", &expr);
                 self.shaping_stack.push(ShapingFrame::new_rule_via_shaping(name, expr))
             },
-            Command::StartShaping(_loc, expr) => {
-                println!(" => {}", &expr);
+            Command::StartShaping(loc, expr) => {
+                let width = self.calculate_padding();
+                println!("apply {loc:width$} => {}", &expr);
                 self.shaping_stack.push(ShapingFrame::new(expr))
             },
             Command::ApplyRule {loc, strategy_name, applied_rule} => {
+                let width = self.calculate_padding();
                 if let Some(frame) = self.shaping_stack.last_mut() {
                     let rule =  match applied_rule {
                         AppliedRule::ByName {loc, name, reversed} => match self.rules.get(&name) {
                             Some(rule) => if reversed {
+                                print!("apply {name:width$}");
                                 match rule.clone() {
                                     Rule::User {loc, head, body} => Rule::User{loc, head: body, body: head},
                                     Rule::Replace => return Err(RuntimeError::IrreversibleRule(loc).into())
                                 }
                             } else {
+                                print!("apply {name:width$}");
                                 rule.clone()
                             }
 
                             None => return Err(RuntimeError::RuleDoesNotExist(name, loc).into())
                         }
-                        AppliedRule::Anonymous {loc, head, body} => Rule::User {loc, head, body},
+                        AppliedRule::Anonymous {loc, head, body} => {
+                            print!("apply {loc}");
+                            Rule::User {loc, head, body}
+                        },
                     };
 
                     let new_expr = match Strategy::by_name(&strategy_name) {
