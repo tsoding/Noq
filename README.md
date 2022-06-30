@@ -1,5 +1,7 @@
 # Noq
 
+**EXTREMELY IMPORTANT! THIS LANGUAGE IS A WORK IN PROGRESS! ANYTHING CAN CHANGE AT ANY MOMENT WITHOUT ANY NOTICE! USE THIS LANGUAGE AT YOUR OWN RISK!**
+
 Not [Coq](https://coq.inria.fr/). Simple expression transformer that is not Coq.
 
 ## Quick Start
