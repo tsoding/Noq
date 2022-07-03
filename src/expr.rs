@@ -140,12 +140,7 @@ impl Expr {
     fn parse_fun_args(lexer: &mut Lexer) -> Result<Vec<Self>, SyntaxError> {
         use TokenKind::*;
         let mut args = Vec::new();
-        {
-            let token = lexer.next_token();
-            if token.kind != OpenParen {
-                return Err(SyntaxError::FunArgsStart(token))
-            }
-        }
+        lexer.expect_token(OpenParen).map_err(SyntaxError::FunArgsStart)?;
         if lexer.peek_token().kind == CloseParen {
             lexer.next_token();
             return Ok(args)
@@ -155,14 +150,8 @@ impl Expr {
             lexer.next_token();
             args.push(Self::parse(lexer)?);
         }
-        {
-            let token = lexer.next_token();
-            if token.kind == CloseParen {
-                Ok(args)
-            } else {
-                Err(SyntaxError::FunArgsEnd(token))
-            }
-        }
+        lexer.expect_token(CloseParen).map_err(SyntaxError::FunArgsEnd)?;
+        Ok(args)
     }
 
     fn parse_primary(lexer: &mut Lexer) -> Result<Self, SyntaxError> {
