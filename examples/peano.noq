@@ -1,4 +1,4 @@
-# Peano numbers
+// Peano numbers
 
 load "./std/std.noq"
 

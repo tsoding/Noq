@@ -155,7 +155,7 @@ impl Lexer {
         Loc {
             file_path: self.file_path.clone(),
             row: self.lnum + 1,
-            col: self.cnum - self.bol + 1,
+            col: self.cnum - self.bol,
         }
     }
 
@@ -228,6 +228,7 @@ impl Lexer {
                     let mut text = x.to_string();
                     match x {
                         '#' => {
+                            println!("{}: WARNING: deprecated comment style. Use C-style one line comments with // instead", self.loc());
                             self.drop_line();
                             continue 'again;
                         }
@@ -249,7 +250,12 @@ impl Lexer {
                         '+' => Token {kind: TokenKind::Plus,       text, loc},
                         '-' => Token {kind: TokenKind::Dash,       text, loc},
                         '*' => Token {kind: TokenKind::Asterisk,   text, loc},
-                        '/' => Token {kind: TokenKind::Slash,      text, loc},
+                        '/' => if let Some(_) = self.drop_char_if(|x| x == '/') {
+                            self.drop_line();
+                            continue 'again;
+                        } else {
+                            Token {kind: TokenKind::Slash, text, loc}
+                        }
                         '^' => Token {kind: TokenKind::Caret,      text, loc},
                         '%' => Token {kind: TokenKind::Percent,    text, loc},
                         '{' => Token {kind: TokenKind::OpenCurly,  text, loc},
