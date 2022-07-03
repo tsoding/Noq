@@ -264,6 +264,7 @@ impl Strategy {
 }
 
 impl Rule {
+    // TODO: Make Rule::apply() accept expr by &mut
     fn apply(&self, expr: &Expr, strategy: &Strategy, apply_command_loc: &Loc) -> Result<Expr, RuntimeError> {
         fn apply_to_subexprs(rule: &Rule, expr: &Expr, strategy: &Strategy, apply_command_loc: &Loc, match_count: &mut usize) -> Result<(Expr, bool), RuntimeError> {
             use Expr::*;

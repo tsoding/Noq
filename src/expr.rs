@@ -176,22 +176,15 @@ impl Expr {
 
     fn parse_primary(lexer: &mut Lexer<impl Iterator<Item=char>>) -> Result<Self, SyntaxError> {
         let mut head = {
-            let token = lexer.peek_token().clone();
+            let token = lexer.next_token();
             match token.kind {
                 TokenKind::OpenParen => {
-                    lexer.next_token();
                     let result = Self::parse(lexer)?;
-                    {
-                        let token = lexer.next_token();
-                        if token.kind != TokenKind::CloseParen {
-                            return Err(SyntaxError::PrimaryEnd(token))
-                        }
-                    }
+                    lexer.expect_token(TokenKind::CloseParen).map_err(SyntaxError::PrimaryEnd)?;
                     result
                 }
 
                 TokenKind::Ident => {
-                    lexer.next_token();
                     Self::parse_ident(&token.text)
                 },
 
