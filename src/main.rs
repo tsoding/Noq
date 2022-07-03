@@ -1046,6 +1046,7 @@ fn main() {
     } else {
         match config.mode {
             ReplMode::Normal => start_repl(),
+            // TODO: new repl does not support Windows
             ReplMode::DebugNew => start_new_cool_repl(),
             ReplMode::DebugParser => start_parser_debugger(),
             ReplMode::DebugLexer => start_lexer_debugger(),
