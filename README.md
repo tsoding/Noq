@@ -2,7 +2,7 @@
 
 **EXTREMELY IMPORTANT! THIS LANGUAGE IS A WORK IN PROGRESS! ANYTHING CAN CHANGE AT ANY MOMENT WITHOUT ANY NOTICE! USE THIS LANGUAGE AT YOUR OWN RISK!**
 
-Not [Coq](https://coq.inria.fr/). Simple expression transformer that is not Coq.
+Not [Coq](https://coq.inria.fr/). Simple expression transformer that is NOT Coq.
 
 ## Quick Start
 
@@ -32,7 +32,7 @@ Current expression syntax can be defined roughly like this:
 
 ## Rules and Shapes
 
-The two main entities of the languare are Rules and Shapes. A rule defines pattern (head) and it's corresponding substitution (body). The rule definition has the following syntax:
+The two main entities of the language are Rules and Shapes. A rule defines pattern (head) and it's corresponding substitution (body). The rule definition has the following syntax:
 
 ```
 <name:symbol> :: <head:expression> = <body:expression>
