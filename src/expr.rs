@@ -137,7 +137,7 @@ impl Expr {
         }
     }
 
-    fn parse_fun_args(lexer: &mut Lexer<impl Iterator<Item=char>>) -> Result<Vec<Self>, SyntaxError> {
+    fn parse_fun_args(lexer: &mut Lexer) -> Result<Vec<Self>, SyntaxError> {
         use TokenKind::*;
         let mut args = Vec::new();
         {
@@ -165,7 +165,7 @@ impl Expr {
         }
     }
 
-    fn parse_primary(lexer: &mut Lexer<impl Iterator<Item=char>>) -> Result<Self, SyntaxError> {
+    fn parse_primary(lexer: &mut Lexer) -> Result<Self, SyntaxError> {
         let mut head = {
             let token = lexer.next_token();
             match token.kind {
@@ -189,7 +189,7 @@ impl Expr {
         Ok(head)
     }
 
-    fn parse_binary_operator(lexer: &mut Lexer<impl Iterator<Item=char>>, current_precedence: usize) -> Result<Self, SyntaxError> {
+    fn parse_binary_operator(lexer: &mut Lexer, current_precedence: usize) -> Result<Self, SyntaxError> {
         if current_precedence > Op::MAX_PRECEDENCE {
             return Self::parse_primary(lexer)
         }
@@ -213,7 +213,7 @@ impl Expr {
         Ok(result)
     }
 
-    pub fn parse(lexer: &mut Lexer<impl Iterator<Item=char>>) -> Result<Self, SyntaxError> {
+    pub fn parse(lexer: &mut Lexer) -> Result<Self, SyntaxError> {
         Self::parse_binary_operator(lexer, 0)
     }
 

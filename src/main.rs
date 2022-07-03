@@ -450,7 +450,7 @@ enum Command {
 }
 
 impl Command {
-    fn parse(lexer: &mut Lexer<impl Iterator<Item=char>>) -> Result<Command, CommandSyntaxError> {
+    fn parse(lexer: &mut Lexer) -> Result<Command, CommandSyntaxError> {
         let keyword_kind = lexer.peek_token().kind;
         match keyword_kind {
             TokenKind::Load => {
@@ -706,7 +706,7 @@ impl Context {
                     Ok(source) => source,
                     Err(err) => return Err(RuntimeError::CouldNotLoadFile(loc, err).into())
                 };
-                let mut lexer = Lexer::new(source.chars(), Some(file_path));
+                let mut lexer = Lexer::new(source.chars().collect(), Some(file_path));
                 while lexer.peek_token().kind != TokenKind::End {
                     // TODO: the processed command during the file loading should not be put into the history
                     self.process_command(Command::parse(&mut lexer)?)?
@@ -821,7 +821,7 @@ fn start_lexer_debugger() {
         print!("{}", prompt);
         stdout().flush().unwrap();
         stdin().read_line(&mut command).unwrap();
-        println!("Tokens: {:?}", Lexer::new(command.trim().chars(), None).map(|t| (t.kind, t.text)).collect::<Vec<_>>());
+        println!("Tokens: {:?}", Lexer::new(command.trim().chars().collect(), None).map(|t| (t.kind, t.text)).collect::<Vec<_>>());
     }
 }
 
@@ -834,7 +834,7 @@ fn start_parser_debugger() {
         stdout().flush().unwrap();
         stdin().read_line(&mut command).unwrap();
 
-        let mut lexer = Lexer::new(command.trim().chars(), None);
+        let mut lexer = Lexer::new(command.trim().chars().collect(), None);
         if lexer.peek_token().kind != TokenKind::End {
             match Expr::parse(&mut lexer) {
                 Err(err) => {
@@ -852,14 +852,14 @@ fn start_parser_debugger() {
 }
 
 
-fn repl_parse_and_process_command(context: &mut Context, lexer: &mut Lexer<impl Iterator<Item=char>>) -> Result<(), Error> {
+fn repl_parse_and_process_command(context: &mut Context, lexer: &mut Lexer) -> Result<(), Error> {
     let command = Command::parse(lexer)?;
     lexer.expect_token(TokenKind::End).map_err(CommandSyntaxError::UnparsedInput)?;
     context.process_command(command)?;
     Ok(())
 }
 
-fn parse_and_process_command(context: &mut Context, lexer: &mut Lexer<impl Iterator<Item=char>>) -> Result<(), Error> {
+fn parse_and_process_command(context: &mut Context, lexer: &mut Lexer) -> Result<(), Error> {
     let command = Command::parse(lexer)?;
     context.process_command(command)?;
     Ok(())
@@ -868,7 +868,7 @@ fn parse_and_process_command(context: &mut Context, lexer: &mut Lexer<impl Itera
 fn interpret_file(file_path: &str) {
     let mut context = Context::new();
     let source = fs::read_to_string(&file_path).unwrap();
-    let mut lexer = Lexer::new(source.chars(), Some(file_path.to_string()));
+    let mut lexer = Lexer::new(source.chars().collect(), Some(file_path.to_string()));
     while !context.quit && lexer.peek_token().kind != TokenKind::End {
         if let Err(err) = parse_and_process_command(&mut context, &mut lexer) {
             eprintln!("{}: ERROR: {}", err.loc(), err);
@@ -901,7 +901,7 @@ fn start_repl() {
         print!("{}", prompt);
         stdout().flush().unwrap();
         stdin().read_line(&mut command).unwrap();
-        let mut lexer = Lexer::new(command.trim().chars(), None);
+        let mut lexer = Lexer::new(command.trim().chars().collect(), None);
         if lexer.peek_token().kind != TokenKind::End {
             if let Err(err) = repl_parse_and_process_command(&mut context, &mut lexer) {
                 eprint_repl_loc_cursor(prompt, err.loc());
@@ -977,7 +977,7 @@ fn start_new_cool_repl() {
         Body(expr::SyntaxError),
     }
 
-    fn parse_match(lexer: &mut Lexer<impl Iterator<Item=char>>) -> Result<(Expr, Expr), MatchSyntaxError> {
+    fn parse_match(lexer: &mut Lexer) -> Result<(Expr, Expr), MatchSyntaxError> {
         let head = Expr::parse(lexer).map_err(MatchSyntaxError::Head)?;
         lexer.expect_token(TokenKind::Equals).map_err(MatchSyntaxError::Separator)?;
         let body = Expr::parse(lexer).map_err(MatchSyntaxError::Body)?;
@@ -1017,7 +1017,7 @@ fn start_new_cool_repl() {
             Key::Char(key) => {
                 new_cool_repl.insert_char(key);
                 new_cool_repl.popup.clear();
-                if let Ok((head, body)) = parse_match(&mut Lexer::new(new_cool_repl.buffer.iter().cloned(), None)) {
+                if let Ok((head, body)) = parse_match(&mut Lexer::new(new_cool_repl.buffer.clone(), None)) {
                     let subexprs = find_all_subexprs(&head, &body);
                     for subexpr in subexprs {
                         new_cool_repl.popup.push(format!("{}", HighlightedSubexpr{expr: &body, subexpr}));
