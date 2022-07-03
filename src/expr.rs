@@ -96,33 +96,24 @@ pub enum Expr {
 }
 
 impl Expr {
-    pub fn substitute(&self, bindings: &HashMap<String, Expr>) -> Self {
+    pub fn substitute(&mut self, bindings: &HashMap<String, Expr>) {
         match self {
-            Self::Sym(_) => self.clone(),
+            Self::Sym(_) => {},
 
-            Self::Var(name) => {
-                if let Some(value) = bindings.get(name) {
-                    value.clone()
-                } else {
-                    self.clone()
-                }
+            Self::Var(name) => if let Some(value) = bindings.get(name) {
+                *self = value.clone()
             }
 
-            Self::Op(op, lhs, rhs) => {
-                Self::Op(
-                    *op,
-                    Box::new(lhs.substitute(bindings)),
-                    Box::new(rhs.substitute(bindings))
-                )
+            Self::Op(_, lhs, rhs) => {
+                lhs.substitute(bindings);
+                rhs.substitute(bindings);
             },
 
             Self::Fun(head, args) => {
-                let new_head = head.substitute(bindings);
-                let mut new_args = Vec::new();
+                head.substitute(bindings);
                 for arg in args {
-                    new_args.push(arg.substitute(bindings))
+                    arg.substitute(bindings)
                 }
-                Self::Fun(Box::new(new_head), new_args)
             }
         }
     }

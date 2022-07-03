@@ -264,54 +264,47 @@ impl Strategy {
 }
 
 impl Rule {
-    // TODO: Make Rule::apply() accept expr by &mut
-    fn apply(&self, expr: &Expr, strategy: &Strategy, apply_command_loc: &Loc) -> Result<Expr, RuntimeError> {
-        fn apply_to_subexprs(rule: &Rule, expr: &Expr, strategy: &Strategy, apply_command_loc: &Loc, match_count: &mut usize) -> Result<(Expr, bool), RuntimeError> {
-            use Expr::*;
+    fn apply(&self, expr: &mut Expr, strategy: &Strategy, apply_command_loc: &Loc) -> Result<(), RuntimeError> {
+        fn apply_to_subexprs(rule: &Rule, expr: &mut Expr, strategy: &Strategy, apply_command_loc: &Loc, match_count: &mut usize) -> Result<bool, RuntimeError> {
             match expr {
-                Sym(_) | Var(_) => Ok((expr.clone(), false)),
-                Op(op, lhs, rhs) => {
-                    let (new_lhs, halt) = apply_impl(rule, lhs, strategy, apply_command_loc, match_count)?;
-                    if halt { return Ok((Op(*op, Box::new(new_lhs), rhs.clone()), true)) }
-                    let (new_rhs, halt) = apply_impl(rule, rhs, strategy, apply_command_loc, match_count)?;
-                    Ok((Op(*op, Box::new(new_lhs), Box::new(new_rhs)), halt))
-                },
-                Fun(head, args) => {
-                    let (new_head, halt) = apply_impl(rule, head, strategy, apply_command_loc, match_count)?;
-                    if halt {
-                        Ok((Fun(Box::new(new_head), args.clone()), true))
-                    } else {
-                        let mut new_args = Vec::<Expr>::new();
-                        let mut halt_args = false;
-                        for arg in args {
-                            if halt_args {
-                                new_args.push(arg.clone())
-                            } else {
-                                let (new_arg, halt) = apply_impl(rule, arg, strategy, apply_command_loc, match_count)?;
-                                new_args.push(new_arg);
-                                halt_args = halt;
-                            }
-                        }
-                        Ok((Fun(Box::new(new_head), new_args), false))
+                Expr::Sym(_) | Expr::Var(_) => Ok(false),
+                Expr::Op(_, lhs, rhs) => {
+                    if apply_impl(rule, lhs, strategy, apply_command_loc, match_count)? {
+                        return Ok(true)
                     }
+                    apply_impl(rule, rhs, strategy, apply_command_loc, match_count)
+                }
+                Expr::Fun(head, args) => {
+                    if apply_impl(rule, head, strategy, apply_command_loc, match_count)? {
+                        return Ok(true);
+                    }
+                    for arg in args.iter_mut() {
+                        if apply_impl(rule, arg, strategy, apply_command_loc, match_count)? {
+                            return Ok(true)
+                        }
+                    }
+                    Ok(false)
                 }
             }
         }
 
-        fn apply_impl(rule: &Rule, expr: &Expr, strategy: &Strategy, apply_command_loc: &Loc, match_count: &mut usize) -> Result<(Expr, bool), RuntimeError> {
+        fn apply_impl(rule: &Rule, expr: &mut Expr, strategy: &Strategy, apply_command_loc: &Loc, match_count: &mut usize) -> Result<bool, RuntimeError> {
             match rule {
                 Rule::User{loc: _, head, body} => {
                     if let Some(bindings) = head.pattern_match(expr) {
                         let resolution = strategy.matched(*match_count);
                         *match_count += 1;
-                        let new_expr = match resolution.action {
-                            Action::Apply => body.substitute(&bindings),
-                            Action::Skip => expr.clone(),
+                        match resolution.action {
+                            Action::Apply => {
+                                *expr = body.clone();
+                                expr.substitute(&bindings)
+                            },
+                            Action::Skip => {},
                         };
                         match resolution.state {
-                            State::Bail => Ok((new_expr, false)),
-                            State::Cont => apply_to_subexprs(rule, &new_expr, strategy, apply_command_loc, match_count),
-                            State::Halt => Ok((new_expr, true)),
+                            State::Bail => Ok(false),
+                            State::Cont => apply_to_subexprs(rule, expr, strategy, apply_command_loc, match_count),
+                            State::Halt => Ok(true),
                         }
                     } else {
                         apply_to_subexprs(rule, expr, strategy, apply_command_loc, match_count)
@@ -328,12 +321,14 @@ impl Rule {
                         };
                         let meta_strategy = bindings.get("Strategy").expect("Variable `Strategy` is present in the meta pattern");
                         if let Expr::Sym(meta_strategy_name) = meta_strategy {
-                            let meta_expr = bindings.get("Expr").expect("Variable `Expr` is present in the meta pattern");
-                            let result = match Strategy::by_name(meta_strategy_name) {
-                                Some(strategy) => meta_rule.apply(meta_expr, &strategy, apply_command_loc),
+                            *expr = bindings.get("Expr").expect("Variable `Expr` is present in the meta pattern").clone();
+                            match Strategy::by_name(meta_strategy_name) {
+                                Some(strategy) => {
+                                    meta_rule.apply(expr, &strategy, apply_command_loc)?;
+                                    Ok(false)
+                                }
                                 None => Err(RuntimeError::UnknownStrategy(meta_strategy_name.to_string(), apply_command_loc.clone()))
-                            };
-                            Ok((result?, false))
+                            }
                         } else {
                             Err(RuntimeError::StrategyIsNotSym(meta_strategy.clone(), apply_command_loc.clone()))
                         }
@@ -343,13 +338,13 @@ impl Rule {
                 },
             }
         }
+
         let mut match_count = 0;
-        let result = (apply_impl(self, expr, strategy, apply_command_loc, &mut match_count)?).0;
-        if match_count > 0 {
-            Ok(result)
-        } else {
-            Err(RuntimeError::NoMatch(apply_command_loc.clone()))
+        apply_impl(self, expr, strategy, apply_command_loc, &mut match_count)?;
+        if match_count == 0 {
+            return Err(RuntimeError::NoMatch(apply_command_loc.clone()))
         }
+        Ok(())
     }
 }
 
@@ -754,13 +749,12 @@ impl Context {
                         AppliedRule::Anonymous {loc, head, body} => Rule::User {loc, head, body},
                     };
 
-                    let new_expr = match Strategy::by_name(&strategy_name) {
-                        Some(strategy) => rule.apply(&frame.expr, &strategy, &loc)?,
+                    match Strategy::by_name(&strategy_name) {
+                        Some(strategy) => rule.apply(&mut frame.expr, &strategy, &loc)?,
                         None => return Err(RuntimeError::UnknownStrategy(strategy_name, loc).into())
                     };
-                    println!(" => {}", &new_expr);
-                    frame.history.push(new_expr.clone());
-                    frame.expr = new_expr;
+                    println!(" => {}", &frame.expr);
+                    frame.history.push(frame.expr.clone());
                 } else {
                     return Err(RuntimeError::NoShapingInPlace(loc).into());
                 }

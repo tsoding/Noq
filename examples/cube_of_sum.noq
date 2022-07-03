@@ -14,6 +14,7 @@ cube_of_sum :: (A + B)^3 {
   mul_comm      |  1
   mul_sum_dist  |  0
   mul_comm      |  8
+  # TODO: cub_of_sum seems to be broken here
   mul_sum_dist  |  0
   mul_comm      |  8
   pow           |! 0
