@@ -127,7 +127,7 @@ impl Expr {
         }
     }
 
-    pub fn var_or_sym_based_on_name(name: &str) -> Self {
+    pub fn parse_ident(name: &str) -> Self {
         let x = name.chars().next().expect("Empty names are not allowed. This might be a bug in the lexer.");
         if x.is_uppercase() || x == '_' {
             Self::Var(name.to_string())
@@ -174,7 +174,7 @@ impl Expr {
         }
     }
 
-    fn parse_fun_or_var_or_sym(lexer: &mut Lexer<impl Iterator<Item=char>>) -> Result<Self, SyntaxError> {
+    fn parse_primary(lexer: &mut Lexer<impl Iterator<Item=char>>) -> Result<Self, SyntaxError> {
         let mut head = {
             let token = lexer.peek_token().clone();
             match token.kind {
@@ -192,7 +192,7 @@ impl Expr {
 
                 TokenKind::Ident => {
                     lexer.next_token();
-                    Self::var_or_sym_based_on_name(&token.text)
+                    Self::parse_ident(&token.text)
                 },
 
                 _ => return Err(SyntaxError::PrimaryStart(token))
@@ -207,7 +207,7 @@ impl Expr {
 
     fn parse_binary_operator(lexer: &mut Lexer<impl Iterator<Item=char>>, current_precedence: usize) -> Result<Self, SyntaxError> {
         if current_precedence > Op::MAX_PRECEDENCE {
-            return Self::parse_fun_or_var_or_sym(lexer)
+            return Self::parse_primary(lexer)
         }
 
         let mut result = Self::parse_binary_operator(lexer, current_precedence + 1)?;
@@ -306,10 +306,10 @@ macro_rules! fun_args {
 #[allow(unused_macros)]
 macro_rules! expr {
     ($name:ident) => {
-        Expr::var_or_sym_based_on_name(stringify!($name))
+        Expr::parse_ident(stringify!($name))
     };
     ($name:ident($($args:tt)*)) => {
-        Expr::Fun(Box::new(Expr::var_or_sym_based_on_name(stringify!($name))), fun_args!($($args)*))
+        Expr::Fun(Box::new(Expr::parse_ident(stringify!($name))), fun_args!($($args)*))
     };
 }
 
