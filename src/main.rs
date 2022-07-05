@@ -611,6 +611,7 @@ impl ShapingFrame {
 }
 
 struct Context {
+    interactive: bool,
     rules: HashMap<String, Rule>,
     shaping_stack: Vec<ShapingFrame>,
     history: Vec<Command>,
@@ -622,11 +623,12 @@ fn pad(sink: &mut impl Write, width: usize) -> io::Result<()> {
 }
 
 impl Context {
-    fn new() -> Self {
+    fn new(interactive: bool) -> Self {
         let mut rules = HashMap::new();
         // TODO: you can potentially `delete` the replace rule (you should not be able to do that)
         rules.insert("replace".to_string(), Rule::Replace);
         Self {
+            interactive,
             rules,
             shaping_stack: Default::default(),
             quit: false,
@@ -699,18 +701,25 @@ impl Context {
         Ok(())
     }
 
+    fn process_file(&mut self, loc: Loc, file_path: String) -> Result<(), Error> {
+        let source = match fs::read_to_string(&file_path) {
+            Ok(source) => source,
+            Err(err) => return Err(RuntimeError::CouldNotLoadFile(loc, err).into())
+        };
+        let mut lexer = Lexer::new(source.chars().collect(), Some(file_path));
+        while lexer.peek_token().kind != TokenKind::End {
+            self.process_command(Command::parse(&mut lexer)?)?
+        }
+        Ok(())
+    }
+
     fn process_command(&mut self, command: Command) -> Result<(), Error> {
         match command.clone() {
             Command::Load(loc, file_path) => {
-                let source = match fs::read_to_string(&file_path) {
-                    Ok(source) => source,
-                    Err(err) => return Err(RuntimeError::CouldNotLoadFile(loc, err).into())
-                };
-                let mut lexer = Lexer::new(source.chars().collect(), Some(file_path));
-                while lexer.peek_token().kind != TokenKind::End {
-                    // TODO: the processed command during the file loading should not be put into the history
-                    self.process_command(Command::parse(&mut lexer)?)?
-                }
+                let saved_interactive = self.interactive;
+                self.interactive = false;
+                self.process_file(loc, file_path)?;
+                self.interactive = saved_interactive;
             }
             Command::DefineRule(rule_loc, rule_name, rule) => {
                 if let Some(existing_rule) = self.rules.get(&rule_name) {
@@ -754,7 +763,9 @@ impl Context {
                         None => return Err(RuntimeError::UnknownStrategy(strategy_name, loc).into())
                     };
                     println!(" => {}", &frame.expr);
-                    frame.history.push(frame.expr.clone());
+                    if self.interactive {
+                        frame.history.push(frame.expr.clone());
+                    }
                 } else {
                     return Err(RuntimeError::NoShapingInPlace(loc).into());
                 }
@@ -803,7 +814,9 @@ impl Context {
                 self.save_history(&file_path).map_err(|err| RuntimeError::CouldNotSaveFile(loc.clone(), err))?;
             }
         }
-        self.history.push(command);
+        if self.interactive {
+            self.history.push(command);
+        }
         Ok(())
     }
 }
@@ -866,7 +879,7 @@ fn parse_and_process_command(context: &mut Context, lexer: &mut Lexer) -> Result
 }
 
 fn interpret_file(file_path: &str) {
-    let mut context = Context::new();
+    let mut context = Context::new(false);
     let source = fs::read_to_string(&file_path).unwrap();
     let mut lexer = Lexer::new(source.chars().collect(), Some(file_path.to_string()));
     while !context.quit && lexer.peek_token().kind != TokenKind::End {
@@ -883,7 +896,7 @@ fn interpret_file(file_path: &str) {
 }
 
 fn start_repl() {
-    let mut context = Context::new();
+    let mut context = Context::new(true);
     let mut command = String::new();
 
     let default_prompt = "noq> ";
@@ -1051,3 +1064,5 @@ fn main() {
 // TODO: `undo` command should remove previous command from the history
 // TODO: Ability to restore saved session
 // TODO: Custom arbitrary operators like in Haskell
+// TODO: Ask if "you really want to exit" on ^C when the history is not empty
+// Because you may want to `save` your history.
