@@ -75,15 +75,17 @@ impl Op {
 
 impl fmt::Display for Op {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Op::Eql => write!(f, "=="),
-            Op::Add => write!(f, "+"),
-            Op::Sub => write!(f, "-"),
-            Op::Mul => write!(f, "*"),
-            Op::Div => write!(f, "/"),
-            Op::Mod => write!(f, "%"),
-            Op::Pow => write!(f, "^"),
-        }
+        write!(f, "{}",
+            match self {
+                Op::Eql => "==",
+                Op::Add => "+",
+                Op::Sub => "-",
+                Op::Mul => "*",
+                Op::Div => "/",
+                Op::Mod => "%",
+                Op::Pow => "^",
+            },
+        )
     }
 }
 
