@@ -264,53 +264,47 @@ impl Strategy {
 }
 
 impl Rule {
-    fn apply(&self, expr: &Expr, strategy: &Strategy, apply_command_loc: &Loc) -> Result<Expr, RuntimeError> {
-        fn apply_to_subexprs(rule: &Rule, expr: &Expr, strategy: &Strategy, apply_command_loc: &Loc, match_count: &mut usize) -> Result<(Expr, bool), RuntimeError> {
-            use Expr::*;
+    fn apply(&self, expr: &mut Expr, strategy: &Strategy, apply_command_loc: &Loc) -> Result<(), RuntimeError> {
+        fn apply_to_subexprs(rule: &Rule, expr: &mut Expr, strategy: &Strategy, apply_command_loc: &Loc, match_count: &mut usize) -> Result<bool, RuntimeError> {
             match expr {
-                Sym(_) | Var(_) => Ok((expr.clone(), false)),
-                Op(op, lhs, rhs) => {
-                    let (new_lhs, halt) = apply_impl(rule, lhs, strategy, apply_command_loc, match_count)?;
-                    if halt { return Ok((Op(*op, Box::new(new_lhs), rhs.clone()), true)) }
-                    let (new_rhs, halt) = apply_impl(rule, rhs, strategy, apply_command_loc, match_count)?;
-                    Ok((Op(*op, Box::new(new_lhs), Box::new(new_rhs)), halt))
-                },
-                Fun(head, args) => {
-                    let (new_head, halt) = apply_impl(rule, head, strategy, apply_command_loc, match_count)?;
-                    if halt {
-                        Ok((Fun(Box::new(new_head), args.clone()), true))
-                    } else {
-                        let mut new_args = Vec::<Expr>::new();
-                        let mut halt_args = false;
-                        for arg in args {
-                            if halt_args {
-                                new_args.push(arg.clone())
-                            } else {
-                                let (new_arg, halt) = apply_impl(rule, arg, strategy, apply_command_loc, match_count)?;
-                                new_args.push(new_arg);
-                                halt_args = halt;
-                            }
-                        }
-                        Ok((Fun(Box::new(new_head), new_args), false))
+                Expr::Sym(_) | Expr::Var(_) => Ok(false),
+                Expr::Op(_, lhs, rhs) => {
+                    if apply_impl(rule, lhs, strategy, apply_command_loc, match_count)? {
+                        return Ok(true)
                     }
+                    apply_impl(rule, rhs, strategy, apply_command_loc, match_count)
+                }
+                Expr::Fun(head, args) => {
+                    if apply_impl(rule, head, strategy, apply_command_loc, match_count)? {
+                        return Ok(true);
+                    }
+                    for arg in args.iter_mut() {
+                        if apply_impl(rule, arg, strategy, apply_command_loc, match_count)? {
+                            return Ok(true)
+                        }
+                    }
+                    Ok(false)
                 }
             }
         }
 
-        fn apply_impl(rule: &Rule, expr: &Expr, strategy: &Strategy, apply_command_loc: &Loc, match_count: &mut usize) -> Result<(Expr, bool), RuntimeError> {
+        fn apply_impl(rule: &Rule, expr: &mut Expr, strategy: &Strategy, apply_command_loc: &Loc, match_count: &mut usize) -> Result<bool, RuntimeError> {
             match rule {
                 Rule::User{loc: _, head, body} => {
                     if let Some(bindings) = head.pattern_match(expr) {
                         let resolution = strategy.matched(*match_count);
                         *match_count += 1;
-                        let new_expr = match resolution.action {
-                            Action::Apply => body.substitute(&bindings),
-                            Action::Skip => expr.clone(),
+                        match resolution.action {
+                            Action::Apply => {
+                                *expr = body.clone();
+                                expr.substitute(&bindings)
+                            },
+                            Action::Skip => {},
                         };
                         match resolution.state {
-                            State::Bail => Ok((new_expr, false)),
-                            State::Cont => apply_to_subexprs(rule, &new_expr, strategy, apply_command_loc, match_count),
-                            State::Halt => Ok((new_expr, true)),
+                            State::Bail => Ok(false),
+                            State::Cont => apply_to_subexprs(rule, expr, strategy, apply_command_loc, match_count),
+                            State::Halt => Ok(true),
                         }
                     } else {
                         apply_to_subexprs(rule, expr, strategy, apply_command_loc, match_count)
@@ -327,12 +321,14 @@ impl Rule {
                         };
                         let meta_strategy = bindings.get("Strategy").expect("Variable `Strategy` is present in the meta pattern");
                         if let Expr::Sym(meta_strategy_name) = meta_strategy {
-                            let meta_expr = bindings.get("Expr").expect("Variable `Expr` is present in the meta pattern");
-                            let result = match Strategy::by_name(meta_strategy_name) {
-                                Some(strategy) => meta_rule.apply(meta_expr, &strategy, apply_command_loc),
+                            *expr = bindings.get("Expr").expect("Variable `Expr` is present in the meta pattern").clone();
+                            match Strategy::by_name(meta_strategy_name) {
+                                Some(strategy) => {
+                                    meta_rule.apply(expr, &strategy, apply_command_loc)?;
+                                    Ok(false)
+                                }
                                 None => Err(RuntimeError::UnknownStrategy(meta_strategy_name.to_string(), apply_command_loc.clone()))
-                            };
-                            Ok((result?, false))
+                            }
                         } else {
                             Err(RuntimeError::StrategyIsNotSym(meta_strategy.clone(), apply_command_loc.clone()))
                         }
@@ -342,13 +338,13 @@ impl Rule {
                 },
             }
         }
+
         let mut match_count = 0;
-        let result = (apply_impl(self, expr, strategy, apply_command_loc, &mut match_count)?).0;
-        if match_count > 0 {
-            Ok(result)
-        } else {
-            Err(RuntimeError::NoMatch(apply_command_loc.clone()))
+        apply_impl(self, expr, strategy, apply_command_loc, &mut match_count)?;
+        if match_count == 0 {
+            return Err(RuntimeError::NoMatch(apply_command_loc.clone()))
         }
+        Ok(())
     }
 }
 
@@ -454,7 +450,7 @@ enum Command {
 }
 
 impl Command {
-    fn parse(lexer: &mut Lexer<impl Iterator<Item=char>>) -> Result<Command, CommandSyntaxError> {
+    fn parse(lexer: &mut Lexer) -> Result<Command, CommandSyntaxError> {
         let keyword_kind = lexer.peek_token().kind;
         match keyword_kind {
             TokenKind::Load => {
@@ -615,6 +611,7 @@ impl ShapingFrame {
 }
 
 struct Context {
+    interactive: bool,
     rules: HashMap<String, Rule>,
     shaping_stack: Vec<ShapingFrame>,
     history: Vec<Command>,
@@ -626,11 +623,12 @@ fn pad(sink: &mut impl Write, width: usize) -> io::Result<()> {
 }
 
 impl Context {
-    fn new() -> Self {
+    fn new(interactive: bool) -> Self {
         let mut rules = HashMap::new();
         // TODO: you can potentially `delete` the replace rule (you should not be able to do that)
         rules.insert("replace".to_string(), Rule::Replace);
         Self {
+            interactive,
             rules,
             shaping_stack: Default::default(),
             quit: false,
@@ -703,18 +701,25 @@ impl Context {
         Ok(())
     }
 
+    fn process_file(&mut self, loc: Loc, file_path: String) -> Result<(), Error> {
+        let source = match fs::read_to_string(&file_path) {
+            Ok(source) => source,
+            Err(err) => return Err(RuntimeError::CouldNotLoadFile(loc, err).into())
+        };
+        let mut lexer = Lexer::new(source.chars().collect(), Some(file_path));
+        while lexer.peek_token().kind != TokenKind::End {
+            self.process_command(Command::parse(&mut lexer)?)?
+        }
+        Ok(())
+    }
+
     fn process_command(&mut self, command: Command) -> Result<(), Error> {
         match command.clone() {
             Command::Load(loc, file_path) => {
-                let source = match fs::read_to_string(&file_path) {
-                    Ok(source) => source,
-                    Err(err) => return Err(RuntimeError::CouldNotLoadFile(loc, err).into())
-                };
-                let mut lexer = Lexer::new(source.chars(), Some(file_path));
-                while lexer.peek_token().kind != TokenKind::End {
-                    // TODO: the processed command during the file loading should not be put into the history
-                    self.process_command(Command::parse(&mut lexer)?)?
-                }
+                let saved_interactive = self.interactive;
+                self.interactive = false;
+                self.process_file(loc, file_path)?;
+                self.interactive = saved_interactive;
             }
             Command::DefineRule(rule_loc, rule_name, rule) => {
                 if let Some(existing_rule) = self.rules.get(&rule_name) {
@@ -753,13 +758,14 @@ impl Context {
                         AppliedRule::Anonymous {loc, head, body} => Rule::User {loc, head, body},
                     };
 
-                    let new_expr = match Strategy::by_name(&strategy_name) {
-                        Some(strategy) => rule.apply(&frame.expr, &strategy, &loc)?,
+                    match Strategy::by_name(&strategy_name) {
+                        Some(strategy) => rule.apply(&mut frame.expr, &strategy, &loc)?,
                         None => return Err(RuntimeError::UnknownStrategy(strategy_name, loc).into())
                     };
-                    println!(" => {}", &new_expr);
-                    frame.history.push(new_expr.clone());
-                    frame.expr = new_expr;
+                    println!(" => {}", &frame.expr);
+                    if self.interactive {
+                        frame.history.push(frame.expr.clone());
+                    }
                 } else {
                     return Err(RuntimeError::NoShapingInPlace(loc).into());
                 }
@@ -808,7 +814,9 @@ impl Context {
                 self.save_history(&file_path).map_err(|err| RuntimeError::CouldNotSaveFile(loc.clone(), err))?;
             }
         }
-        self.history.push(command);
+        if self.interactive {
+            self.history.push(command);
+        }
         Ok(())
     }
 }
@@ -826,7 +834,7 @@ fn start_lexer_debugger() {
         print!("{}", prompt);
         stdout().flush().unwrap();
         stdin().read_line(&mut command).unwrap();
-        println!("Tokens: {:?}", Lexer::new(command.trim().chars(), None).map(|t| (t.kind, t.text)).collect::<Vec<_>>());
+        println!("Tokens: {:?}", Lexer::new(command.trim().chars().collect(), None).map(|t| (t.kind, t.text)).collect::<Vec<_>>());
     }
 }
 
@@ -839,7 +847,7 @@ fn start_parser_debugger() {
         stdout().flush().unwrap();
         stdin().read_line(&mut command).unwrap();
 
-        let mut lexer = Lexer::new(command.trim().chars(), None);
+        let mut lexer = Lexer::new(command.trim().chars().collect(), None);
         if lexer.peek_token().kind != TokenKind::End {
             match Expr::parse(&mut lexer) {
                 Err(err) => {
@@ -857,23 +865,23 @@ fn start_parser_debugger() {
 }
 
 
-fn repl_parse_and_process_command(context: &mut Context, lexer: &mut Lexer<impl Iterator<Item=char>>) -> Result<(), Error> {
+fn repl_parse_and_process_command(context: &mut Context, lexer: &mut Lexer) -> Result<(), Error> {
     let command = Command::parse(lexer)?;
     lexer.expect_token(TokenKind::End).map_err(CommandSyntaxError::UnparsedInput)?;
     context.process_command(command)?;
     Ok(())
 }
 
-fn parse_and_process_command(context: &mut Context, lexer: &mut Lexer<impl Iterator<Item=char>>) -> Result<(), Error> {
+fn parse_and_process_command(context: &mut Context, lexer: &mut Lexer) -> Result<(), Error> {
     let command = Command::parse(lexer)?;
     context.process_command(command)?;
     Ok(())
 }
 
 fn interpret_file(file_path: &str) {
-    let mut context = Context::new();
+    let mut context = Context::new(false);
     let source = fs::read_to_string(&file_path).unwrap();
-    let mut lexer = Lexer::new(source.chars(), Some(file_path.to_string()));
+    let mut lexer = Lexer::new(source.chars().collect(), Some(file_path.to_string()));
     while !context.quit && lexer.peek_token().kind != TokenKind::End {
         if let Err(err) = parse_and_process_command(&mut context, &mut lexer) {
             eprintln!("{}: ERROR: {}", err.loc(), err);
@@ -888,7 +896,7 @@ fn interpret_file(file_path: &str) {
 }
 
 fn start_repl() {
-    let mut context = Context::new();
+    let mut context = Context::new(true);
     let mut command = String::new();
 
     let default_prompt = "noq> ";
@@ -906,7 +914,7 @@ fn start_repl() {
         print!("{}", prompt);
         stdout().flush().unwrap();
         stdin().read_line(&mut command).unwrap();
-        let mut lexer = Lexer::new(command.trim().chars(), None);
+        let mut lexer = Lexer::new(command.trim().chars().collect(), None);
         if lexer.peek_token().kind != TokenKind::End {
             if let Err(err) = repl_parse_and_process_command(&mut context, &mut lexer) {
                 eprint_repl_loc_cursor(prompt, err.loc());
@@ -982,7 +990,7 @@ fn start_new_cool_repl() {
         Body(expr::SyntaxError),
     }
 
-    fn parse_match(lexer: &mut Lexer<impl Iterator<Item=char>>) -> Result<(Expr, Expr), MatchSyntaxError> {
+    fn parse_match(lexer: &mut Lexer) -> Result<(Expr, Expr), MatchSyntaxError> {
         let head = Expr::parse(lexer).map_err(MatchSyntaxError::Head)?;
         lexer.expect_token(TokenKind::Equals).map_err(MatchSyntaxError::Separator)?;
         let body = Expr::parse(lexer).map_err(MatchSyntaxError::Body)?;
@@ -1022,7 +1030,7 @@ fn start_new_cool_repl() {
             Key::Char(key) => {
                 new_cool_repl.insert_char(key);
                 new_cool_repl.popup.clear();
-                if let Ok((head, body)) = parse_match(&mut Lexer::new(new_cool_repl.buffer.iter().cloned(), None)) {
+                if let Ok((head, body)) = parse_match(&mut Lexer::new(new_cool_repl.buffer.clone(), None)) {
                     let subexprs = find_all_subexprs(&head, &body);
                     for subexpr in subexprs {
                         new_cool_repl.popup.push(format!("{}", HighlightedSubexpr{expr: &body, subexpr}));
@@ -1045,6 +1053,7 @@ fn main() {
     } else {
         match config.mode {
             ReplMode::Normal => start_repl(),
+            // TODO: new repl does not support Windows
             ReplMode::DebugNew => start_new_cool_repl(),
             ReplMode::DebugParser => start_parser_debugger(),
             ReplMode::DebugLexer => start_lexer_debugger(),
@@ -1055,3 +1064,5 @@ fn main() {
 // TODO: `undo` command should remove previous command from the history
 // TODO: Ability to restore saved session
 // TODO: Custom arbitrary operators like in Haskell
+// TODO: Ask if "you really want to exit" on ^C when the history is not empty
+// Because you may want to `save` your history.

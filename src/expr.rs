@@ -96,38 +96,29 @@ pub enum Expr {
 }
 
 impl Expr {
-    pub fn substitute(&self, bindings: &HashMap<String, Expr>) -> Self {
+    pub fn substitute(&mut self, bindings: &HashMap<String, Expr>) {
         match self {
-            Self::Sym(_) => self.clone(),
+            Self::Sym(_) => {},
 
-            Self::Var(name) => {
-                if let Some(value) = bindings.get(name) {
-                    value.clone()
-                } else {
-                    self.clone()
-                }
+            Self::Var(name) => if let Some(value) = bindings.get(name) {
+                *self = value.clone()
             }
 
-            Self::Op(op, lhs, rhs) => {
-                Self::Op(
-                    *op,
-                    Box::new(lhs.substitute(bindings)),
-                    Box::new(rhs.substitute(bindings))
-                )
+            Self::Op(_, lhs, rhs) => {
+                lhs.substitute(bindings);
+                rhs.substitute(bindings);
             },
 
             Self::Fun(head, args) => {
-                let new_head = head.substitute(bindings);
-                let mut new_args = Vec::new();
+                head.substitute(bindings);
                 for arg in args {
-                    new_args.push(arg.substitute(bindings))
+                    arg.substitute(bindings)
                 }
-                Self::Fun(Box::new(new_head), new_args)
             }
         }
     }
 
-    pub fn var_or_sym_based_on_name(name: &str) -> Self {
+    pub fn parse_ident(name: &str) -> Self {
         let x = name.chars().next().expect("Empty names are not allowed. This might be a bug in the lexer.");
         if x.is_uppercase() || x == '_' {
             Self::Var(name.to_string())
@@ -146,15 +137,10 @@ impl Expr {
         }
     }
 
-    fn parse_fun_args(lexer: &mut Lexer<impl Iterator<Item=char>>) -> Result<Vec<Self>, SyntaxError> {
+    fn parse_fun_args(lexer: &mut Lexer) -> Result<Vec<Self>, SyntaxError> {
         use TokenKind::*;
         let mut args = Vec::new();
-        {
-            let token = lexer.next_token();
-            if token.kind != OpenParen {
-                return Err(SyntaxError::FunArgsStart(token))
-            }
-        }
+        lexer.expect_token(OpenParen).map_err(SyntaxError::FunArgsStart)?;
         if lexer.peek_token().kind == CloseParen {
             lexer.next_token();
             return Ok(args)
@@ -164,35 +150,22 @@ impl Expr {
             lexer.next_token();
             args.push(Self::parse(lexer)?);
         }
-        {
-            let token = lexer.next_token();
-            if token.kind == CloseParen {
-                Ok(args)
-            } else {
-                Err(SyntaxError::FunArgsEnd(token))
-            }
-        }
+        lexer.expect_token(CloseParen).map_err(SyntaxError::FunArgsEnd)?;
+        Ok(args)
     }
 
-    fn parse_fun_or_var_or_sym(lexer: &mut Lexer<impl Iterator<Item=char>>) -> Result<Self, SyntaxError> {
+    fn parse_primary(lexer: &mut Lexer) -> Result<Self, SyntaxError> {
         let mut head = {
-            let token = lexer.peek_token().clone();
+            let token = lexer.next_token();
             match token.kind {
                 TokenKind::OpenParen => {
-                    lexer.next_token();
                     let result = Self::parse(lexer)?;
-                    {
-                        let token = lexer.next_token();
-                        if token.kind != TokenKind::CloseParen {
-                            return Err(SyntaxError::PrimaryEnd(token))
-                        }
-                    }
+                    lexer.expect_token(TokenKind::CloseParen).map_err(SyntaxError::PrimaryEnd)?;
                     result
                 }
 
                 TokenKind::Ident => {
-                    lexer.next_token();
-                    Self::var_or_sym_based_on_name(&token.text)
+                    Self::parse_ident(&token.text)
                 },
 
                 _ => return Err(SyntaxError::PrimaryStart(token))
@@ -205,9 +178,9 @@ impl Expr {
         Ok(head)
     }
 
-    fn parse_binary_operator(lexer: &mut Lexer<impl Iterator<Item=char>>, current_precedence: usize) -> Result<Self, SyntaxError> {
+    fn parse_binary_operator(lexer: &mut Lexer, current_precedence: usize) -> Result<Self, SyntaxError> {
         if current_precedence > Op::MAX_PRECEDENCE {
-            return Self::parse_fun_or_var_or_sym(lexer)
+            return Self::parse_primary(lexer)
         }
 
         let mut result = Self::parse_binary_operator(lexer, current_precedence + 1)?;
@@ -229,7 +202,7 @@ impl Expr {
         Ok(result)
     }
 
-    pub fn parse(lexer: &mut Lexer<impl Iterator<Item=char>>) -> Result<Self, SyntaxError> {
+    pub fn parse(lexer: &mut Lexer) -> Result<Self, SyntaxError> {
         Self::parse_binary_operator(lexer, 0)
     }
 
@@ -306,10 +279,10 @@ macro_rules! fun_args {
 #[allow(unused_macros)]
 macro_rules! expr {
     ($name:ident) => {
-        Expr::var_or_sym_based_on_name(stringify!($name))
+        Expr::parse_ident(stringify!($name))
     };
     ($name:ident($($args:tt)*)) => {
-        Expr::Fun(Box::new(Expr::var_or_sym_based_on_name(stringify!($name))), fun_args!($($args)*))
+        Expr::Fun(Box::new(Expr::parse_ident(stringify!($name))), fun_args!($($args)*))
     };
 }
 
