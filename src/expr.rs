@@ -228,12 +228,10 @@ impl Expr {
                 }
                 (Fun(name1, args1), Fun(name2, args2)) => {
                     if pattern_match_impl(name1, name2, bindings) && args1.len() == args2.len() {
-                        for i in 0..args1.len() {
-                            if !pattern_match_impl(&args1[i], &args2[i], bindings) {
-                                return false;
-                            }
-                        }
-                        true
+                        args1
+                            .iter()
+                            .zip(args2)
+                            .all(|(arg1, arg2)| pattern_match_impl(arg1, arg2, bindings))
                     } else {
                         false
                     }
