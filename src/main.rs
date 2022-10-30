@@ -4,7 +4,6 @@ use std::io::Write;
 use std::env;
 use std::fs;
 use std::io;
-use std::fmt;
 
 use termion::raw::IntoRawMode;
 use termion::input::TermRead;
@@ -15,161 +14,12 @@ mod lexer;
 mod repl;
 #[macro_use]
 mod expr;
+mod diagnostics;
 
 use lexer::*;
 use repl::*;
 use expr::*;
-
-#[derive(Debug)]
-enum CommandSyntaxError {
-    LoadArg(Token),
-    SaveArg(Token),
-    DeleteArg(Token),
-    /// Failed to parse the start of the command.
-    ///
-    /// The start of the command is always an expression. The specific
-    /// command is determined by a token after the expression.
-    CommandStart(expr::SyntaxError),
-    /// Failed to parse the command separator.
-    ///
-    /// The command separator comes after the starting expression of
-    /// the command and determines the command itself.
-    CommandSep(Token),
-    StrategyName(Token),
-    AnonymousRuleBody(expr::SyntaxError),
-    AnonymousRuleWithoutStrategy(Token),
-    DefineRuleHead(expr::SyntaxError),
-    DefineRuleBody(expr::SyntaxError),
-    DefineRuleSep(Token),
-    UnparsedInput(Token),
-}
-
-impl CommandSyntaxError {
-    fn loc(&self) -> &Loc {
-        match self {
-            Self::LoadArg(token) |
-            Self::SaveArg(token) |
-            Self::DeleteArg(token) |
-            Self::CommandSep(token) |
-            Self::StrategyName(token) |
-            Self::AnonymousRuleWithoutStrategy(token) |
-            Self::UnparsedInput(token) |
-            Self::DefineRuleSep(token) => &token.loc,
-
-            Self::CommandStart(expr_err) |
-            Self::AnonymousRuleBody(expr_err) |
-            Self::DefineRuleHead(expr_err) |
-            Self::DefineRuleBody(expr_err) => expr_err.loc(),
-        }
-    }
-}
-
-impl fmt::Display for CommandSyntaxError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Self::LoadArg(token) => write!(f, "`load` Command Argument must be {}, but got {} instead", TokenKind::Str, token),
-            Self::SaveArg(token) => write!(f, "`save` Command Argument must be {}, but got {} instead", TokenKind::Str, token),
-            Self::DeleteArg(token) => write!(f, "`delete` Command Argument must be {}, but got {} instead", TokenKind::Ident, token),
-            // TODO: report what are the valid command separators
-            Self::CommandSep(token) => write!(f, "expected Command Separator, but got {} instead", token),
-            Self::StrategyName(token) => write!(f, "Strategy Name must be {}, but got {} instead", TokenKind::Ident, token),
-            Self::AnonymousRuleWithoutStrategy(token) => write!(f, "expected {} after the Anonymous Rule, but got {}", TokenKind::Bar, token.kind),
-            // TODO: report what are the valid rule definition separators
-            Self::DefineRuleSep(token) => write!(f, "unexpected Rule Definition Separator {}", token),
-
-            Self::UnparsedInput(token) => write!(f, "unexpected token {} after the End of the Command", token),
-            Self::CommandStart(expr_err) => write!(f, "invalid Starting Expression of the Command: {}", expr_err),
-            Self::AnonymousRuleBody(expr_err) => write!(f, "invalid Body of the Anonymous Rule: {}", expr_err),
-            Self::DefineRuleHead(expr_err) => write!(f, "invalid Head of the Rule Definition: {}", expr_err),
-            Self::DefineRuleBody(expr_err) => write!(f, "invalid Body of the Rule Definition: {}", expr_err),
-        }
-    }
-}
-
-#[derive(Debug)]
-/// An error that happens during execution of the Noq source code
-enum RuntimeError {
-    RuleAlreadyExists(String, Loc, Option<Loc>),
-    RuleDoesNotExist(String, Loc),
-    NoShapingInPlace(Loc),
-    EndOfHistory(Loc),
-    UnknownStrategy(String, Loc),
-    IrreversibleRule(Loc),
-    StrategyIsNotSym(Expr, Loc),
-    NoMatch(Loc),
-    CouldNotLoadFile(Loc, io::Error),
-    CouldNotSaveFile(Loc, io::Error),
-}
-
-impl fmt::Display for RuntimeError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Self::RuleAlreadyExists(name, _new_loc, _old_loc) => write!(f, "redefinition of existing rule {}", name),
-            Self::NoShapingInPlace(_loc) => write!(f, "no shaping in place."),
-            Self::RuleDoesNotExist(name, _loc) => write!(f, "rule {} does not exist", name),
-            Self::EndOfHistory(_loc) => write!(f, "end of history"),
-            Self::UnknownStrategy(name, _loc) => write!(f, "unknown rule application strategy '{}'", name),
-            Self::IrreversibleRule(_loc) => write!(f, "irreversible rule"),
-            Self::StrategyIsNotSym(expr, _loc) => write!(f, "strategy must be a symbol but got {} {}", expr.human_name(), &expr),
-            Self::NoMatch(_loc) => write!(f, "no match found"),
-            Self::CouldNotLoadFile(_loc, err) => write!(f, "could not load file {:?}", err),
-            Self::CouldNotSaveFile(_loc, err) => write!(f, "could not save file {:?}", err),
-        }
-    }
-}
-
-impl RuntimeError {
-    fn loc(&self) -> &Loc {
-        match self {
-            Self::RuleAlreadyExists(_, loc, _) |
-            Self::RuleDoesNotExist(_, loc) |
-            Self::NoShapingInPlace(loc) |
-            Self::EndOfHistory(loc) |
-            Self::UnknownStrategy(_, loc) |
-            Self::IrreversibleRule(loc) |
-            Self::StrategyIsNotSym(_, loc) |
-            Self::NoMatch(loc) |
-            Self::CouldNotLoadFile(loc, _) |
-            Self::CouldNotSaveFile(loc, _) => loc,
-        }
-    }
-}
-
-#[derive(Debug)]
-enum Error {
-    Runtime(RuntimeError),
-    CommandSyntax(CommandSyntaxError),
-}
-
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Self::Runtime(err) => write!(f, "{}", err),
-            Self::CommandSyntax(err) => write!(f, "{}", err),
-        }
-    }
-}
-
-impl Error {
-    fn loc(&self) -> &Loc {
-        match self {
-            Self::Runtime(err) => err.loc(),
-            Self::CommandSyntax(err) => err.loc(),
-        }
-    }
-}
-
-impl From<CommandSyntaxError> for Error {
-    fn from(err: CommandSyntaxError) -> Self {
-        Self::CommandSyntax(err)
-    }
-}
-
-impl From<RuntimeError> for Error {
-    fn from(err: RuntimeError) -> Self {
-        Self::Runtime(err)
-    }
-}
+use diagnostics::*;
 
 #[derive(Clone)]
 enum AppliedRule {
@@ -264,31 +114,31 @@ impl Strategy {
 }
 
 impl Rule {
-    fn apply(&self, expr: &mut Expr, strategy: &Strategy, apply_command_loc: &Loc) -> Result<(), RuntimeError> {
-        fn apply_to_subexprs(rule: &Rule, expr: &mut Expr, strategy: &Strategy, apply_command_loc: &Loc, match_count: &mut usize) -> Result<bool, RuntimeError> {
+    fn apply(&self, expr: &mut Expr, strategy: &Strategy, apply_command_loc: &Loc, diag: &mut impl Diagnoster) -> Option<()> {
+        fn apply_to_subexprs(rule: &Rule, expr: &mut Expr, strategy: &Strategy, apply_command_loc: &Loc, match_count: &mut usize, diag: &mut impl Diagnoster) -> Option<bool> {
             match expr {
-                Expr::Sym(_) | Expr::Var(_) => Ok(false),
+                Expr::Sym(_) | Expr::Var(_) => Some(false),
                 Expr::Op(_, lhs, rhs) => {
-                    if apply_impl(rule, lhs, strategy, apply_command_loc, match_count)? {
-                        return Ok(true)
+                    if apply_impl(rule, lhs, strategy, apply_command_loc, match_count, diag)? {
+                        return Some(true)
                     }
-                    apply_impl(rule, rhs, strategy, apply_command_loc, match_count)
+                    apply_impl(rule, rhs, strategy, apply_command_loc, match_count, diag)
                 }
                 Expr::Fun(head, args) => {
-                    if apply_impl(rule, head, strategy, apply_command_loc, match_count)? {
-                        return Ok(true);
+                    if apply_impl(rule, head, strategy, apply_command_loc, match_count, diag)? {
+                        return Some(true);
                     }
                     for arg in args.iter_mut() {
-                        if apply_impl(rule, arg, strategy, apply_command_loc, match_count)? {
-                            return Ok(true)
+                        if apply_impl(rule, arg, strategy, apply_command_loc, match_count, diag)? {
+                            return Some(true)
                         }
                     }
-                    Ok(false)
+                    Some(false)
                 }
             }
         }
 
-        fn apply_impl(rule: &Rule, expr: &mut Expr, strategy: &Strategy, apply_command_loc: &Loc, match_count: &mut usize) -> Result<bool, RuntimeError> {
+        fn apply_impl(rule: &Rule, expr: &mut Expr, strategy: &Strategy, apply_command_loc: &Loc, match_count: &mut usize, diag: &mut impl Diagnoster) -> Option<bool> {
             match rule {
                 Rule::User{loc: _, head, body} => {
                     if let Some(bindings) = head.pattern_match(expr) {
@@ -302,12 +152,12 @@ impl Rule {
                             Action::Skip => {},
                         };
                         match resolution.state {
-                            State::Bail => Ok(false),
-                            State::Cont => apply_to_subexprs(rule, expr, strategy, apply_command_loc, match_count),
-                            State::Halt => Ok(true),
+                            State::Bail => Some(false),
+                            State::Cont => apply_to_subexprs(rule, expr, strategy, apply_command_loc, match_count, diag),
+                            State::Halt => Some(true),
                         }
                     } else {
-                        apply_to_subexprs(rule, expr, strategy, apply_command_loc, match_count)
+                        apply_to_subexprs(rule, expr, strategy, apply_command_loc, match_count, diag)
                     }
                 },
 
@@ -324,27 +174,32 @@ impl Rule {
                             *expr = bindings.get("Expr").expect("Variable `Expr` is present in the meta pattern").clone();
                             match Strategy::by_name(meta_strategy_name) {
                                 Some(strategy) => {
-                                    meta_rule.apply(expr, &strategy, apply_command_loc)?;
-                                    Ok(false)
+                                    meta_rule.apply(expr, &strategy, apply_command_loc, diag)?;
+                                    Some(false)
                                 }
-                                None => Err(RuntimeError::UnknownStrategy(meta_strategy_name.to_string(), apply_command_loc.clone()))
+                                None => {
+                                    diag.report(&apply_command_loc, Severity::Error, &format!("unknown rule application strategy '{}'", meta_strategy_name));
+                                    None
+                                }
                             }
                         } else {
-                            Err(RuntimeError::StrategyIsNotSym(meta_strategy.clone(), apply_command_loc.clone()))
+                            diag.report(&apply_command_loc, Severity::Error, &format!("strategy must be a symbol but got {} {}", meta_strategy.human_name(), &meta_strategy));
+                            None
                         }
                     } else {
-                        apply_to_subexprs(rule, expr, strategy, apply_command_loc, match_count)
+                        apply_to_subexprs(rule, expr, strategy, apply_command_loc, match_count, diag)
                     }
                 },
             }
         }
 
         let mut match_count = 0;
-        apply_impl(self, expr, strategy, apply_command_loc, &mut match_count)?;
+        apply_impl(self, expr, strategy, apply_command_loc, &mut match_count, diag)?;
         if match_count == 0 {
-            return Err(RuntimeError::NoMatch(apply_command_loc.clone()))
+            diag.report(&apply_command_loc, Severity::Error, &format!("no match found"));
+            return None
         }
-        Ok(())
+        Some(())
     }
 }
 
@@ -450,38 +305,38 @@ enum Command {
 }
 
 impl Command {
-    fn parse(lexer: &mut Lexer) -> Result<Command, CommandSyntaxError> {
+    fn parse(lexer: &mut Lexer, diag: &mut impl Diagnoster) -> Option<Command> {
         let keyword_kind = lexer.peek_token().kind;
         match keyword_kind {
             TokenKind::Load => {
                 lexer.next_token();
-                let token = lexer.expect_token(TokenKind::Str).map_err(CommandSyntaxError::LoadArg)?;
-                Ok(Self::Load(token.loc, token.text))
+                let token = lexer.expect_token(TokenKind::Str, diag)?;
+                Some(Self::Load(token.loc, token.text))
             },
             TokenKind::Save => {
                 lexer.next_token();
-                let token = lexer.expect_token(TokenKind::Str).map_err(CommandSyntaxError::SaveArg)?;
-                Ok(Self::Save(token.loc, token.text))
+                let token = lexer.expect_token(TokenKind::Str, diag)?;
+                Some(Self::Save(token.loc, token.text))
             }
             TokenKind::CloseCurly => {
                 let keyword = lexer.next_token();
-                Ok(Command::FinishShaping(keyword.loc))
+                Some(Command::FinishShaping(keyword.loc))
             }
             TokenKind::Undo => {
                 let keyword = lexer.next_token();
-                Ok(Command::UndoRule(keyword.loc))
+                Some(Command::UndoRule(keyword.loc))
             }
             TokenKind::Quit => {
                 lexer.next_token();
-                Ok(Command::Quit)
+                Some(Command::Quit)
             }
             TokenKind::Delete => {
                 let keyword = lexer.next_token();
-                let name = lexer.expect_token(TokenKind::Ident).map_err(CommandSyntaxError::DeleteArg)?.text;
-                Ok(Command::DeleteRule(keyword.loc, name))
+                let name = lexer.expect_token(TokenKind::Ident, diag)?.text;
+                Some(Command::DeleteRule(keyword.loc, name))
             }
             _ => {
-                let expr = Expr::parse(lexer).map_err(CommandSyntaxError::CommandStart)?;
+                let expr = Expr::parse(lexer, diag)?;
 
                 match lexer.peek_token().kind {
                     TokenKind::Bar => {
@@ -489,15 +344,16 @@ impl Command {
                         let (reversed, strategy_name_token) = {
                             let token = lexer.next_token();
                             if token.kind == TokenKind::Bang {
-                                (true, lexer.expect_token(TokenKind::Ident).map_err(CommandSyntaxError::StrategyName)?)
+                                (true, lexer.expect_token(TokenKind::Ident, diag)?)
                             } else if token.kind == TokenKind::Ident {
                                 (false, token)
                             } else {
-                                return Err(CommandSyntaxError::StrategyName(token))
+                                diag.report(&token.loc, Severity::Error, &format!("Strategy Name must be {}, but got {} instead", TokenKind::Ident, token));
+                                return None;
                             }
                         };
                         if let Expr::Sym(rule_name) = expr {
-                            Ok(Command::ApplyRule {
+                            Some(Command::ApplyRule {
                                 loc: bar.loc.clone(),
                                 strategy_name: strategy_name_token.text,
                                 applied_rule: AppliedRule::ByName {
@@ -513,19 +369,20 @@ impl Command {
                     TokenKind::Equals => {
                         let head = expr;
                         let equals = lexer.next_token();
-                        let body = Expr::parse(lexer).map_err(CommandSyntaxError::AnonymousRuleBody)?;
-                        lexer.expect_token(TokenKind::Bar).map_err(CommandSyntaxError::AnonymousRuleWithoutStrategy)?;
+                        let body = Expr::parse(lexer, diag)?;
+                        lexer.expect_token(TokenKind::Bar, diag)?;
                         let (reversed, strategy_name_token) = {
                             let token = lexer.next_token();
                             if token.kind == TokenKind::Bang {
-                                (true, lexer.expect_token(TokenKind::Ident).map_err(CommandSyntaxError::StrategyName)?)
+                                (true, lexer.expect_token(TokenKind::Ident, diag)?)
                             } else if token.kind == TokenKind::Ident {
                                 (false, token)
                             } else {
-                                return Err(CommandSyntaxError::StrategyName(token))
+                                diag.report(&token.loc, Severity::Error, &format!("Strategy Name must be {}, but got {} instead", TokenKind::Ident, token));
+                                return None
                             }
                         };
-                        Ok(Command::ApplyRule {
+                        Some(Command::ApplyRule {
                             loc: equals.loc.clone(),
                             strategy_name: strategy_name_token.text,
                             applied_rule: if reversed {
@@ -545,25 +402,25 @@ impl Command {
                     }
                     TokenKind::OpenCurly  => {
                         let keyword = lexer.next_token();
-                        Ok(Command::StartShaping(keyword.loc, expr))
+                        Some(Command::StartShaping(keyword.loc, expr))
                     }
                     TokenKind::DoubleColon => {
                         let keyword = lexer.next_token();
                         match expr {
                             Expr::Sym(name) => {
-                                let head = Expr::parse(lexer).map_err(CommandSyntaxError::DefineRuleHead)?;
+                                let head = Expr::parse(lexer, diag)?;
                                 match lexer.peek_token().kind {
                                     TokenKind::OpenCurly =>  {
                                         lexer.next_token();
-                                        Ok(Command::DefineRuleViaShaping {
+                                        Some(Command::DefineRuleViaShaping {
                                             name,
                                             expr: head
                                         })
                                     }
                                     TokenKind::Equals => {
                                         lexer.next_token();
-                                        let body = Expr::parse(lexer).map_err(CommandSyntaxError::DefineRuleBody)?;
-                                        Ok(Command::DefineRule(
+                                        let body = Expr::parse(lexer, diag)?;
+                                        Some(Command::DefineRule(
                                             keyword.loc.clone(),
                                             name,
                                             Rule::User {
@@ -573,13 +430,24 @@ impl Command {
                                             }
                                         ))
                                     }
-                                    _ => Err(CommandSyntaxError::DefineRuleSep(lexer.next_token()))
+                                    _ => {
+                                        let token = lexer.next_token();
+                                        diag.report(&token.loc, Severity::Error, &format!("unexpected Rule Definition Separator {}", token));
+                                        None
+                                    }
                                 }
                             }
-                            _ => todo!("Report that we expected a symbol")
+                            _ => {
+                                diag.report(&keyword.loc, Severity::Error, &format!("expected symbol"));
+                                None
+                            }
                         }
                     }
-                    _ => Err(CommandSyntaxError::CommandSep(lexer.next_token()))
+                    _ => {
+                        let token = lexer.next_token();
+                        diag.report(&token.loc, Severity::Error, &format!("expected Command Separator, but got {} instead", token));
+                        None
+                    }
                 }
             }
         }
@@ -701,24 +569,27 @@ impl Context {
         Ok(())
     }
 
-    fn process_file(&mut self, loc: Loc, file_path: String) -> Result<(), Error> {
+    fn process_file(&mut self, loc: Loc, file_path: String, diag: &mut impl Diagnoster) -> Option<()> {
         let source = match fs::read_to_string(&file_path) {
             Ok(source) => source,
-            Err(err) => return Err(RuntimeError::CouldNotLoadFile(loc, err).into())
+            Err(err) => {
+                diag.report(&loc, Severity::Error, &format!("could not load file {:?}", err));
+                return None
+            }
         };
         let mut lexer = Lexer::new(source.chars().collect(), Some(file_path));
         while lexer.peek_token().kind != TokenKind::End {
-            self.process_command(Command::parse(&mut lexer)?)?
+            self.process_command(Command::parse(&mut lexer, diag)?, diag)?
         }
-        Ok(())
+        Some(())
     }
 
-    fn process_command(&mut self, command: Command) -> Result<(), Error> {
+    fn process_command(&mut self, command: Command, diag: &mut impl Diagnoster) -> Option<()> {
         match command.clone() {
             Command::Load(loc, file_path) => {
                 let saved_interactive = self.interactive;
                 self.interactive = false;
-                self.process_file(loc, file_path)?;
+                self.process_file(loc, file_path, diag)?;
                 self.interactive = saved_interactive;
             }
             Command::DefineRule(rule_loc, rule_name, rule) => {
@@ -727,9 +598,13 @@ impl Context {
                         Rule::User{loc, ..} => Some(loc),
                         Rule::Replace => None,
                     };
-                    return Err(RuntimeError::RuleAlreadyExists(rule_name, rule_loc, loc.cloned()).into())
+                    diag.report(&rule_loc, Severity::Error, &format!("redefinition of existing rule {}", rule_name));
+                    if let Some(loc) = loc {
+                        diag.report(&loc, Severity::Info, &format!("the original definition is located here"));
+                    }
+                    return None
                 }
-                println!("defined rule `{}`", &rule_name);
+                diag.report(&rule_loc, Severity::Info, &format!("defined rule `{}`", &rule_name));
                 self.rules.insert(rule_name, rule);
             }
             Command::DefineRuleViaShaping{name, expr, ..} => {
@@ -747,27 +622,37 @@ impl Context {
                             Some(rule) => if reversed {
                                 match rule.clone() {
                                     Rule::User {loc, head, body} => Rule::User{loc, head: body, body: head},
-                                    Rule::Replace => return Err(RuntimeError::IrreversibleRule(loc).into())
+                                    Rule::Replace => {
+                                        diag.report(&loc, Severity::Error, &format!("irreversible rule"));
+                                        return None;
+                                    }
                                 }
                             } else {
                                 rule.clone()
                             }
 
-                            None => return Err(RuntimeError::RuleDoesNotExist(name, loc).into())
+                            None => {
+                                diag.report(&loc, Severity::Error, &format!("rule {} does not exist", name));
+                                return None;
+                            }
                         }
                         AppliedRule::Anonymous {loc, head, body} => Rule::User {loc, head, body},
                     };
 
                     match Strategy::by_name(&strategy_name) {
-                        Some(strategy) => rule.apply(&mut frame.expr, &strategy, &loc)?,
-                        None => return Err(RuntimeError::UnknownStrategy(strategy_name, loc).into())
+                        Some(strategy) => rule.apply(&mut frame.expr, &strategy, &loc, diag)?,
+                        None => {
+                            diag.report(&loc, Severity::Error, &format!("unknown rule application strategy '{}'", strategy_name));
+                            return None
+                        }
                     };
                     println!(" => {}", &frame.expr);
                     if self.interactive {
                         frame.history.push(frame.expr.clone());
                     }
                 } else {
-                    return Err(RuntimeError::NoShapingInPlace(loc).into());
+                    diag.report(&loc, Severity::Error, &format!("no shaping in place"));
+                    return None
                 }
             }
             Command::FinishShaping(loc) => {
@@ -779,13 +664,17 @@ impl Context {
                                 Rule::User{loc, ..} => Some(loc.clone()),
                                 Rule::Replace => None,
                             };
-                            return Err(RuntimeError::RuleAlreadyExists(name, loc, old_loc).into())
+                            diag.report(&loc, Severity::Error, &format!("redefinition of existing rule {}", name));
+                            if let Some(old_loc) = old_loc {
+                                diag.report(&old_loc, Severity::Info, &format!("the original definition is located here"));
+                            }
                         }
                         println!("defined rule `{}`", &name);
                         self.rules.insert(name, Rule::User {loc, head, body});
                     }
                 } else {
-                    return Err(RuntimeError::NoShapingInPlace(loc).into())
+                    diag.report(&loc, Severity::Error, "no shaping in place");
+                    return None
                 }
             }
             Command::UndoRule(loc) => {
@@ -794,10 +683,12 @@ impl Context {
                         println!(" => {}", &previous_expr);
                         frame.expr = previous_expr;
                     } else {
-                        return Err(RuntimeError::EndOfHistory(loc).into())
+                        diag.report(&loc, Severity::Error, "end of history");
+                        return None;
                     }
                 } else {
-                    return Err(RuntimeError::NoShapingInPlace(loc).into())
+                    diag.report(&loc, Severity::Error, "no shaping in place");
+                    return None;
                 }
             }
             Command::Quit => {
@@ -807,23 +698,22 @@ impl Context {
                 if self.rules.contains_key(&name) {
                     self.rules.remove(&name);
                 } else {
-                    return Err(RuntimeError::RuleDoesNotExist(name, loc).into());
+                    diag.report(&loc, Severity::Error, &format!("rule {} does not exist", name));
+                    return None
                 }
             }
             Command::Save(loc, file_path) => {
-                self.save_history(&file_path).map_err(|err| RuntimeError::CouldNotSaveFile(loc.clone(), err))?;
+                if let Err(err) = self.save_history(&file_path) {
+                    diag.report(&loc, Severity::Error, &format!("could not save file {:?}", err));
+                    return None
+                }
             }
         }
         if self.interactive {
             self.history.push(command);
         }
-        Ok(())
+        Some(())
     }
-}
-
-fn eprint_repl_loc_cursor(prompt: &str, loc: &Loc) {
-    assert!(loc.row == 1);
-    eprintln!("{:>width$}^", "", width=prompt.len() + loc.col - 1);
 }
 
 fn start_lexer_debugger() {
@@ -841,6 +731,7 @@ fn start_lexer_debugger() {
 fn start_parser_debugger() {
     let prompt = "parser> ";
     let mut command = String::new();
+    let mut diag = StdoutDiagnoster{};
     loop {
         command.clear();
         print!("{}", prompt);
@@ -849,53 +740,46 @@ fn start_parser_debugger() {
 
         let mut lexer = Lexer::new(command.trim().chars().collect(), None);
         if lexer.peek_token().kind != TokenKind::End {
-            match Expr::parse(&mut lexer) {
-                Err(err) => {
-                    eprint_repl_loc_cursor(prompt, err.loc());
-                    eprintln!("ERROR: {}", err);
-                },
-                Ok(expr) => {
-                    println!("  Display:  {}", expr);
-                    println!("  Debug:    {:?}", expr);
-                    println!("  Unparsed: {:?}", lexer.map(|t| (t.kind, t.text)).collect::<Vec<_>>());
-                }
+            if let Some(expr) = Expr::parse(&mut lexer, &mut diag) {
+                println!("  Display:  {}", expr);
+                println!("  Debug:    {:?}", expr);
+                println!("  Unparsed: {:?}", lexer.map(|t| (t.kind, t.text)).collect::<Vec<_>>());
             }
         }
     }
 }
 
 
-fn repl_parse_and_process_command(context: &mut Context, lexer: &mut Lexer) -> Result<(), Error> {
-    let command = Command::parse(lexer)?;
-    lexer.expect_token(TokenKind::End).map_err(CommandSyntaxError::UnparsedInput)?;
-    context.process_command(command)?;
-    Ok(())
+fn repl_parse_and_process_command(context: &mut Context, lexer: &mut Lexer, diag: &mut impl Diagnoster) -> Option<()> {
+    let command = Command::parse(lexer, diag)?;
+    let token = lexer.peek_token();
+    if token.kind != TokenKind::End {
+        diag.report(&token.loc, Severity::Error, &format!("unexpected token {} after the End of the Command", token));
+        return None;
+    }
+    context.process_command(command, diag)?;
+    Some(())
 }
 
-fn parse_and_process_command(context: &mut Context, lexer: &mut Lexer) -> Result<(), Error> {
-    let command = Command::parse(lexer)?;
-    context.process_command(command)?;
-    Ok(())
+fn parse_and_process_command(context: &mut Context, lexer: &mut Lexer, diag: &mut impl Diagnoster) -> Option<()> {
+    let command = Command::parse(lexer, diag)?;
+    context.process_command(command, diag)?;
+    Some(())
 }
 
-fn interpret_file(file_path: &str) {
+fn interpret_file(file_path: &str) -> Option<()> {
     let mut context = Context::new(false);
     let source = fs::read_to_string(&file_path).unwrap();
     let mut lexer = Lexer::new(source.chars().collect(), Some(file_path.to_string()));
+    let mut diag = StdoutDiagnoster{};
     while !context.quit && lexer.peek_token().kind != TokenKind::End {
-        if let Err(err) = parse_and_process_command(&mut context, &mut lexer) {
-            eprintln!("{}: ERROR: {}", err.loc(), err);
-            if let Error::Runtime(RuntimeError::RuleAlreadyExists(_, _, Some(prev_loc))) = err {
-                if prev_loc.file_path.is_some() {
-                    eprintln!("{}: previous declaration is located here", prev_loc)
-                }
-            }
-            std::process::exit(1);
-        }
+        parse_and_process_command(&mut context, &mut lexer, &mut diag)?
     }
+    Some(())
 }
 
 fn start_repl() {
+    let mut diag = StdoutDiagnoster{};
     let mut context = Context::new(true);
     let mut command = String::new();
 
@@ -916,15 +800,8 @@ fn start_repl() {
         stdin().read_line(&mut command).unwrap();
         let mut lexer = Lexer::new(command.trim().chars().collect(), None);
         if lexer.peek_token().kind != TokenKind::End {
-            if let Err(err) = repl_parse_and_process_command(&mut context, &mut lexer) {
-                eprint_repl_loc_cursor(prompt, err.loc());
-                eprintln!("ERROR: {}", err);
-                if let Error::Runtime(RuntimeError::RuleAlreadyExists(_, _, Some(prev_loc))) = err {
-                    if prev_loc.file_path.is_some() {
-                        eprintln!("{}: previous declaration is located here", prev_loc)
-                    }
-                }
-            }
+            // TODO: pointing the place of error with arrow is broken
+            repl_parse_and_process_command(&mut context, &mut lexer, &mut diag);
         } else if let Some(frame) = context.shaping_stack.last() {
             println!(" => {}", frame.expr);
         }
@@ -984,17 +861,11 @@ impl Config {
 }
 
 fn start_new_cool_repl() {
-    enum MatchSyntaxError {
-        Head(expr::SyntaxError),
-        Separator(Token),
-        Body(expr::SyntaxError),
-    }
-
-    fn parse_match(lexer: &mut Lexer) -> Result<(Expr, Expr), MatchSyntaxError> {
-        let head = Expr::parse(lexer).map_err(MatchSyntaxError::Head)?;
-        lexer.expect_token(TokenKind::Equals).map_err(MatchSyntaxError::Separator)?;
-        let body = Expr::parse(lexer).map_err(MatchSyntaxError::Body)?;
-        Ok((head, body))
+    fn parse_match(lexer: &mut Lexer, diag: &mut impl Diagnoster) -> Option<(Expr, Expr)> {
+        let head = Expr::parse(lexer, diag)?;
+        lexer.expect_token(TokenKind::Equals, diag)?;
+        let body = Expr::parse(lexer, diag)?;
+        Some((head, body))
     }
 
     // TODO: check if the stdin is tty
@@ -1006,6 +877,7 @@ fn start_new_cool_repl() {
     stdout.flush().unwrap();
 
     let mut new_cool_repl: NewCoolRepl = Default::default();
+    let mut diag = StdoutDiagnoster{};
 
     for key in stdin.keys() {
         match key.unwrap() {
@@ -1030,7 +902,7 @@ fn start_new_cool_repl() {
             Key::Char(key) => {
                 new_cool_repl.insert_char(key);
                 new_cool_repl.popup.clear();
-                if let Ok((head, body)) = parse_match(&mut Lexer::new(new_cool_repl.buffer.clone(), None)) {
+                if let Some((head, body)) = parse_match(&mut Lexer::new(new_cool_repl.buffer.clone(), None), &mut diag) {
                     let subexprs = find_all_subexprs(&head, &body);
                     for subexpr in subexprs {
                         new_cool_repl.popup.push(format!("{}", HighlightedSubexpr{expr: &body, subexpr}));
@@ -1049,7 +921,7 @@ fn main() {
     let config = Config::from_iter(&mut env::args());
 
     if let Some(file_path) = &config.file_path {
-        interpret_file(file_path)
+        interpret_file(file_path);
     } else {
         match config.mode {
             ReplMode::Normal => start_repl(),
