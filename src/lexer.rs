@@ -1,5 +1,4 @@
 use std::fmt;
-use super::diagnostics::*;
 
 #[derive(Debug, Clone)]
 pub enum Loc {
@@ -171,13 +170,12 @@ impl Lexer {
         }
     }
 
-    pub fn expect_token(&mut self, kind: TokenKind, diag: &mut impl Diagnoster) -> Option<Token> {
+    pub fn expect_token(&mut self, kind: TokenKind) -> Result<Token, (TokenKind, Token)> {
         let token = self.next_token();
         if kind == token.kind {
-            Some(token)
+            Ok(token)
         } else {
-            diag.report(&token.loc, Severity::Error, &format!("expected {}, but got {}", kind, token.kind));
-            None
+            Err((kind, token))
         }
     }
 

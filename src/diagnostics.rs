@@ -37,7 +37,7 @@ impl Diagnoster for StdoutDiagnoster {
             Loc::Repl{col, line} => {
                 if severity == Severity::Error {
                     eprintln!("{}", line.iter().collect::<String>());
-                    eprintln!("{:>width$}^", "", width=col - 1);
+                    eprintln!("{:>width$}^", "", width=col);
                 }
                 eprintln!("{}: {}", severity, message);
             }

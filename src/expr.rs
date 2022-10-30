@@ -111,7 +111,9 @@ impl Expr {
     fn parse_fun_args(lexer: &mut Lexer, diag: &mut impl Diagnoster) -> Option<Vec<Self>> {
         use TokenKind::*;
         let mut args = Vec::new();
-        lexer.expect_token(OpenParen, diag)?;
+        let open_paren_token = lexer.expect_token(OpenParen).map_err(|(expected_kind, actual_token)| {
+            diag.report(&actual_token.loc, Severity::Error, &format!("Functor argument list must start with {}, but we got {} instead", expected_kind, actual_token))
+        }).ok()?;
         if lexer.peek_token().kind == CloseParen {
             lexer.next_token();
             return Some(args)
@@ -121,7 +123,10 @@ impl Expr {
             lexer.next_token();
             args.push(Self::parse(lexer, diag)?);
         }
-        lexer.expect_token(CloseParen, diag)?;
+        lexer.expect_token(CloseParen).map_err(|(expected_kind, actual_token)| {
+            diag.report(&actual_token.loc, Severity::Error, &format!("Functor argument list must end with {}, but we got {} instead", expected_kind, actual_token));
+            diag.report(&open_paren_token.loc, Severity::Info, &format!("The corresponding {} is here.", open_paren_token.kind));
+        }).ok()?;
         Some(args)
     }
 
@@ -131,7 +136,10 @@ impl Expr {
             match token.kind {
                 TokenKind::OpenParen => {
                     let result = Self::parse(lexer, diag)?;
-                    lexer.expect_token(TokenKind::CloseParen, diag)?;
+                    lexer.expect_token(TokenKind::CloseParen).map_err(|(expected_kind, actual_token)| {
+                        diag.report(&actual_token.loc, Severity::Error, &format!("Expected {} at the end of the expression, but we got {} instead.", expected_kind, &actual_token));
+                        diag.report(&token.loc, Severity::Info, &format!("The corresponding {} is here.", token.kind));
+                    }).ok()?;
                     result
                 }
 
