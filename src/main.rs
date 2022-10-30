@@ -196,6 +196,7 @@ impl Rule {
         let mut match_count = 0;
         apply_impl(self, expr, strategy, apply_command_loc, &mut match_count, diag)?;
         if match_count == 0 {
+            // TODO: provide more info on "no match found" error
             diag.report(&apply_command_loc, Severity::Error, &format!("no match found"));
             return None
         }

@@ -148,7 +148,7 @@ impl Expr {
                 },
 
                 _ => {
-                    diag.report(&token.loc, Severity::Error, &format!("Expected start of a primary expression"));
+                    diag.report(&token.loc, Severity::Error, &format!("Expected start of a primary expression. Primary expressions start with {} or {}.", TokenKind::Ident, TokenKind::OpenParen));
                     return None;
                 }
             }
