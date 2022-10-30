@@ -573,7 +573,7 @@ impl Context {
         let source = match fs::read_to_string(&file_path) {
             Ok(source) => source,
             Err(err) => {
-                diag.report(&loc, Severity::Error, &format!("could not load file {:?}", err));
+                diag.report(&loc, Severity::Error, &format!("could not load file {}: {}", file_path, err));
                 return None
             }
         };
@@ -704,7 +704,7 @@ impl Context {
             }
             Command::Save(loc, file_path) => {
                 if let Err(err) = self.save_history(&file_path) {
-                    diag.report(&loc, Severity::Error, &format!("could not save file {:?}", err));
+                    diag.report(&loc, Severity::Error, &format!("could not save file {}: {}", file_path, err));
                     return None
                 }
             }
