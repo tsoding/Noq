@@ -1,27 +1,24 @@
 use std::fmt;
 
-#[derive(Default, Debug, Clone)]
-pub struct Loc {
-    pub file_path: Option<String>,
-    pub row: usize,
-    pub col: usize,
+#[derive(Debug, Clone)]
+pub enum Loc {
+    File {
+        path: String,
+        row: usize,
+        col: usize,
+    },
+    Repl {
+        col: usize,
+        line: Vec<char>,
+    },
 }
 
 macro_rules! loc_here {
     () => {
-        Loc {
-            file_path: Some(file!().to_string()),
+        Loc::File {
+            path: file!().to_string(),
             row: line!() as usize,
-            col: column!() as usize
-        }
-    }
-}
-
-impl fmt::Display for Loc {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match &self.file_path {
-            Some(file_path) => write!(f, "{}:{}:{}", file_path, self.row, self.col),
-            None => write!(f, "{}:{}", self.row, self.col),
+            col: column!() as usize,
         }
     }
 }
@@ -151,20 +148,34 @@ impl Lexer {
         }
     }
 
+    pub fn current_line(&self) -> Vec<char> {
+        let mut eol = self.bol;
+        while eol < self.chars.len() && self.chars[eol] != '\n' {
+            eol += 1;
+        }
+        return self.chars[self.bol..eol].to_vec();
+    }
+
     pub fn loc(&self) -> Loc {
-        Loc {
-            file_path: self.file_path.clone(),
-            row: self.lnum + 1,
-            col: self.cnum - self.bol,
+        match &self.file_path {
+            Some(file_path) => Loc::File {
+                path: file_path.clone(),
+                row: self.lnum + 1,
+                col: self.cnum - self.bol,
+            },
+            None => Loc::Repl {
+                col: self.cnum - self.bol,
+                line: self.current_line(),
+            },
         }
     }
 
-    pub fn expect_token(&mut self, kind: TokenKind) -> Result<Token, Token> {
+    pub fn expect_token(&mut self, kind: TokenKind) -> Result<Token, (TokenKind, Token)> {
         let token = self.next_token();
         if kind == token.kind {
             Ok(token)
         } else {
-            Err(token)
+            Err((kind, token))
         }
     }
 
@@ -227,11 +238,6 @@ impl Lexer {
                 Some(x) => {
                     let mut text = x.to_string();
                     match x {
-                        '#' => {
-                            println!("{}: WARNING: deprecated comment style. Use C-style one line comments with // instead", self.loc());
-                            self.drop_line();
-                            continue 'again;
-                        }
                         '(' => Token {kind: TokenKind::OpenParen,  text, loc},
                         ')' => Token {kind: TokenKind::CloseParen, text, loc},
                         ',' => Token {kind: TokenKind::Comma,      text, loc},

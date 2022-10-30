@@ -2,36 +2,7 @@ use std::fmt;
 use std::collections::HashMap;
 
 use super::lexer::*;
-
-#[derive(Debug)]
-pub enum SyntaxError {
-    FunArgsStart(Token),
-    FunArgsEnd(Token),
-    PrimaryStart(Token),
-    PrimaryEnd(Token),
-}
-
-impl SyntaxError {
-    pub fn loc(&self) -> &Loc {
-        match self {
-            Self::FunArgsStart(token) |
-            Self::FunArgsEnd(token) |
-            Self::PrimaryStart(token) |
-            Self::PrimaryEnd(token) => &token.loc
-        }
-    }
-}
-
-impl fmt::Display for SyntaxError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Self::FunArgsStart(token) => write!(f, "expected the Start of a Functor Arguments List {}, but got {}", TokenKind::OpenParen, token),
-            Self::FunArgsEnd(token) => write!(f, "expected the End of a Functor Arguments List {}, but got {}", TokenKind::CloseParen, token),
-            Self::PrimaryStart(token) => write!(f, "expected the Start of a Primary Expression which is {} or {}, but got {}", TokenKind::OpenParen, TokenKind::Ident, token),
-            Self::PrimaryEnd(token) => write!(f, "expected the Start of a Primary Expression which is `)`, but got {} instead", token),
-        }
-    }
-}
+use super::diagnostics::*;
 
 // TODO: unary minus
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -137,30 +108,38 @@ impl Expr {
         }
     }
 
-    fn parse_fun_args(lexer: &mut Lexer) -> Result<Vec<Self>, SyntaxError> {
+    fn parse_fun_args(lexer: &mut Lexer, diag: &mut impl Diagnoster) -> Option<Vec<Self>> {
         use TokenKind::*;
         let mut args = Vec::new();
-        lexer.expect_token(OpenParen).map_err(SyntaxError::FunArgsStart)?;
+        let open_paren_token = lexer.expect_token(OpenParen).map_err(|(expected_kind, actual_token)| {
+            diag.report(&actual_token.loc, Severity::Error, &format!("Functor argument list must start with {}, but we got {} instead", expected_kind, actual_token))
+        }).ok()?;
         if lexer.peek_token().kind == CloseParen {
             lexer.next_token();
-            return Ok(args)
+            return Some(args)
         }
-        args.push(Self::parse(lexer)?);
+        args.push(Self::parse(lexer, diag)?);
         while lexer.peek_token().kind == Comma {
             lexer.next_token();
-            args.push(Self::parse(lexer)?);
+            args.push(Self::parse(lexer, diag)?);
         }
-        lexer.expect_token(CloseParen).map_err(SyntaxError::FunArgsEnd)?;
-        Ok(args)
+        lexer.expect_token(CloseParen).map_err(|(expected_kind, actual_token)| {
+            diag.report(&actual_token.loc, Severity::Error, &format!("Functor argument list must end with {}, but we got {} instead", expected_kind, actual_token));
+            diag.report(&open_paren_token.loc, Severity::Info, &format!("The corresponding {} is here.", open_paren_token.kind));
+        }).ok()?;
+        Some(args)
     }
 
-    fn parse_primary(lexer: &mut Lexer) -> Result<Self, SyntaxError> {
+    fn parse_primary(lexer: &mut Lexer, diag: &mut impl Diagnoster) -> Option<Self> {
         let mut head = {
             let token = lexer.next_token();
             match token.kind {
                 TokenKind::OpenParen => {
-                    let result = Self::parse(lexer)?;
-                    lexer.expect_token(TokenKind::CloseParen).map_err(SyntaxError::PrimaryEnd)?;
+                    let result = Self::parse(lexer, diag)?;
+                    lexer.expect_token(TokenKind::CloseParen).map_err(|(expected_kind, actual_token)| {
+                        diag.report(&actual_token.loc, Severity::Error, &format!("Expected {} at the end of the expression, but we got {} instead.", expected_kind, &actual_token));
+                        diag.report(&token.loc, Severity::Info, &format!("The corresponding {} is here.", token.kind));
+                    }).ok()?;
                     result
                 }
 
@@ -168,22 +147,25 @@ impl Expr {
                     Self::parse_ident(&token.text)
                 },
 
-                _ => return Err(SyntaxError::PrimaryStart(token))
+                _ => {
+                    diag.report(&token.loc, Severity::Error, &format!("Expected start of a primary expression"));
+                    return None;
+                }
             }
         };
 
         while lexer.peek_token().kind == TokenKind::OpenParen {
-            head = Expr::Fun(Box::new(head), Self::parse_fun_args(lexer)?)
+            head = Expr::Fun(Box::new(head), Self::parse_fun_args(lexer, diag)?)
         }
-        Ok(head)
+        Some(head)
     }
 
-    fn parse_binary_operator(lexer: &mut Lexer, current_precedence: usize) -> Result<Self, SyntaxError> {
+    fn parse_binary_operator(lexer: &mut Lexer, current_precedence: usize, diag: &mut impl Diagnoster) -> Option<Self> {
         if current_precedence > Op::MAX_PRECEDENCE {
-            return Self::parse_primary(lexer)
+            return Self::parse_primary(lexer, diag)
         }
 
-        let mut result = Self::parse_binary_operator(lexer, current_precedence + 1)?;
+        let mut result = Self::parse_binary_operator(lexer, current_precedence + 1, diag)?;
 
         while let Some(op) = Op::from_token_kind(lexer.peek_token().kind) {
             if current_precedence != op.precedence() {
@@ -195,15 +177,15 @@ impl Expr {
             result = Expr::Op(
                 op,
                 Box::new(result),
-                Box::new(Self::parse_binary_operator(lexer, current_precedence)?)
+                Box::new(Self::parse_binary_operator(lexer, current_precedence, diag)?)
             );
         }
 
-        Ok(result)
+        Some(result)
     }
 
-    pub fn parse(lexer: &mut Lexer) -> Result<Self, SyntaxError> {
-        Self::parse_binary_operator(lexer, 0)
+    pub fn parse(lexer: &mut Lexer, diag: &mut impl Diagnoster) -> Option<Self> {
+        Self::parse_binary_operator(lexer, 0, diag)
     }
 
     pub fn pattern_match(&self, value: &Expr) -> Option<HashMap<String, Expr>> {
