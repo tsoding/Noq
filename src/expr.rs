@@ -337,3 +337,78 @@ pub fn find_all_subexprs<'a>(pattern: &'a Expr, expr: &'a Expr) -> Vec<&'a Expr>
     find_all_subexprs_impl(pattern, expr, &mut subexprs);
     subexprs
 }
+
+
+
+#[cfg(test)]
+mod pattern_match_tests {
+    use std::collections::HashMap;
+
+    use super::{Expr};
+
+    #[test]
+    fn anything_bindings_with_a_variable() {
+        assert_bindings(expr!(A), expr!(A), vec![("A", expr!(A))]);
+        assert_bindings(expr!(A), expr!(B), vec![("A", expr!(B))]);
+        assert_bindings(expr!(A), expr!(f()), vec![("A", expr!(f()))]);
+        assert_bindings(expr!(A), expr!(f(X)), vec![("A", expr!(f(X)))]);
+        assert_bindings(expr!(A), expr!(f(X, g(Y), Z)), vec![("A", expr!(f(X, g(Y), Z)))]);
+    }
+
+    #[test]
+    fn function_pattern_only_bindings_with_other_functions_with_same_name_and_number_of_args() {
+        assert_no_bindings(expr!(f()), expr!(a));
+        assert_no_bindings(expr!(f()), expr!(g()));
+        assert_no_bindings(expr!(f(X0)), expr!(f(Y0, Y1)));
+
+        assert_bindings(expr!(f()), expr!(f()), vec![]);
+        assert_bindings(expr!(f(X0)), expr!(f(Y0)), vec![("X0", expr!(Y0))]);
+    }
+
+    #[test]
+    fn test_with_same_repeated_variables() {
+        assert_bindings(expr!(f(X0, X0)), expr!(f(Y0, Y0)), vec![("X0", expr!(Y0))]);
+        assert_bindings(expr!(f(g(X0, X1), X0)), expr!(f(g(Y0, Y1), Y0)), vec![("X0", expr!(Y0)), ("X1", expr!(Y1))]);
+
+        assert_no_bindings(expr!(f(X0, X0)), expr!(f(Y0, Y1)));
+        assert_no_bindings(expr!(f(g(X0, X0), X1)), expr!(f(g(Y0, Y1), X1)));
+    }
+
+    #[test]
+    fn test_recursive_pattern_matching() {
+        assert_bindings(
+            expr!(f(X0, X1)),
+            expr!(f(Y0, Y1)),
+            vec![("X0", expr!(Y0)), ("X1", expr!(Y1))],
+        );
+        assert_bindings(
+            expr!(f(X0, g(X1), X2)),
+            expr!(f(Y0, g(Y1), Y2)),
+            vec![("X0", expr!(Y0)), ("X1", expr!(Y1)), ("X2", expr!(Y2))],
+        );
+        assert_bindings(
+            expr!(f(X0)),
+            expr!(f(g(Y0, Y1))),
+            vec![("X0", expr!(g(Y0, Y1)))],
+        );
+
+        assert_no_bindings(
+            expr!(f(g(X0))),
+            expr!(f(g(Y0, Y1))),
+        );
+    }
+
+    fn assert_bindings(pattern: Expr, with: Expr, expected_bindings: Vec<(&str, Expr)>) {
+        let expected_bindings = expected_bindings
+            .into_iter()
+            .map(|(name, ex)| (name.to_string(), ex))
+            .collect::<HashMap<String, Expr>>();
+
+        let actual_bindings = pattern.pattern_match(&with).unwrap();
+        assert_eq!(expected_bindings, actual_bindings)
+    }
+
+    fn assert_no_bindings(pattern: Expr, with: Expr) {
+        assert_eq!(Option::None, pattern.pattern_match(&with));
+    }
+}
