@@ -588,15 +588,32 @@ impl Context {
         Ok(())
     }
 
-    fn process_file(&mut self, loc: Loc, file_path: String, diag: &mut impl Diagnoster) -> Option<()> {
-        let source = match fs::read_to_string(&file_path) {
-            Ok(source) => source,
+    fn load_source(&self, loc: Loc, file_path: &str, diag: &mut impl Diagnoster) -> Option<String> {
+        match fs::read_to_string(file_path) {
+            Ok(source) => Some(source),
             Err(err) => {
                 diag.report(&loc, Severity::Error, &format!("could not load file {}: {}", file_path, err));
-                return None
+                None
             }
+        }
+    }
+
+    fn process_file(&mut self, loc: Loc, file_path: String, diag: &mut impl Diagnoster) -> Option<()> {
+        let source = if file_path.starts_with("std/") {
+            match env::var("NOQ_STD_PATH") {
+                Ok(std_path) =>
+                    self.load_source(loc, 
+                        &(std_path + file_path.strip_prefix("std/").unwrap()), diag),
+                Err(_) => self.load_source(loc, &file_path, diag)
+            }
+        }
+        else {
+            self.load_source(loc, &file_path, diag)
         };
-        let mut lexer = Lexer::new(source.chars().collect(), Some(file_path));
+        if source.is_none() {
+            return None;
+        }
+        let mut lexer = Lexer::new(source?.chars().collect(), Some(file_path));
         while lexer.peek_token().kind != TokenKind::End {
             self.process_command(Command::parse(&mut lexer, diag)?, diag)?
         }
