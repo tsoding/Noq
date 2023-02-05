@@ -20,7 +20,7 @@ macro_rules! loc_here {
             row: line!() as usize,
             col: column!() as usize,
         }
-    };
+    }
 }
 
 #[derive(Debug, PartialEq, Clone, Copy, Eq, Hash)]
@@ -64,11 +64,11 @@ pub enum TokenKind {
 
 fn keyword_by_name(text: &str) -> Option<TokenKind> {
     match text {
-        "quit" => Some(TokenKind::Quit),
-        "undo" => Some(TokenKind::Undo),
+        "quit"   => Some(TokenKind::Quit),
+        "undo"   => Some(TokenKind::Undo),
         "delete" => Some(TokenKind::Delete),
-        "load" => Some(TokenKind::Load),
-        "save" => Some(TokenKind::Save),
+        "load"   => Some(TokenKind::Load),
+        "save"   => Some(TokenKind::Save),
         _ => None,
     }
 }
@@ -149,9 +149,8 @@ impl Lexer {
     }
 
     pub fn current_line(&self) -> Vec<char> {
-        self.chars[self.bol..]
-            .iter()
-            .map_while(|&x| if x == '\n' { None } else { Some(x) })
+        self.chars[self.bol..].iter().take_while(|&&x| x != '\n')
+            .map(|&x| x)
             .collect()
     }
 
@@ -184,9 +183,7 @@ impl Lexer {
     }
 
     pub fn next_token(&mut self) -> Token {
-        self.peeked
-            .take()
-            .unwrap_or_else(|| self.chop_tokens_from_chars())
+        self.peeked.take().unwrap_or_else(|| self.chop_tokens_from_chars())
     }
 
     fn drop_char_if(&mut self, predicate: impl FnOnce(char) -> bool) -> Option<char> {
@@ -213,7 +210,7 @@ impl Lexer {
     fn drop_line(&mut self) {
         while let Some(x) = self.drop_char() {
             if x == '\n' {
-                return;
+                return
             }
         }
     }
@@ -239,110 +236,36 @@ impl Lexer {
                 Some(x) => {
                     let mut text = x.to_string();
                     match x {
-                        '(' => Token {
-                            kind: TokenKind::OpenParen,
-                            text,
-                            loc,
+                        '(' => Token {kind: TokenKind::OpenParen,  text, loc},
+                        ')' => Token {kind: TokenKind::CloseParen, text, loc},
+                        ',' => Token {kind: TokenKind::Comma,      text, loc},
+                        '=' => if let Some(x) = self.drop_char_if(|x| x == '=') {
+                            text.push(x);
+                            Token {kind: TokenKind::EqualsEquals, text, loc}
+                        } else {
+                            Token {kind: TokenKind::Equals, text, loc}
                         },
-                        ')' => Token {
-                            kind: TokenKind::CloseParen,
-                            text,
-                            loc,
+                        ':' => if let Some(x) = self.drop_char_if(|x| x == ':') {
+                            text.push(x);
+                            Token {kind: TokenKind::DoubleColon, text, loc}
+                        } else {
+                            Token {kind: TokenKind::Colon, text, loc}
                         },
-                        ',' => Token {
-                            kind: TokenKind::Comma,
-                            text,
-                            loc,
-                        },
-                        '=' => {
-                            if let Some(x) = self.drop_char_if(|x| x == '=') {
-                                text.push(x);
-                                Token {
-                                    kind: TokenKind::EqualsEquals,
-                                    text,
-                                    loc,
-                                }
-                            } else {
-                                Token {
-                                    kind: TokenKind::Equals,
-                                    text,
-                                    loc,
-                                }
-                            }
+                        '+' => Token {kind: TokenKind::Plus,       text, loc},
+                        '-' => Token {kind: TokenKind::Dash,       text, loc},
+                        '*' => Token {kind: TokenKind::Asterisk,   text, loc},
+                        '/' => if let Some(_) = self.drop_char_if(|x| x == '/') {
+                            self.drop_line();
+                            continue 'again;
+                        } else {
+                            Token {kind: TokenKind::Slash, text, loc}
                         }
-                        ':' => {
-                            if let Some(x) = self.drop_char_if(|x| x == ':') {
-                                text.push(x);
-                                Token {
-                                    kind: TokenKind::DoubleColon,
-                                    text,
-                                    loc,
-                                }
-                            } else {
-                                Token {
-                                    kind: TokenKind::Colon,
-                                    text,
-                                    loc,
-                                }
-                            }
-                        }
-                        '+' => Token {
-                            kind: TokenKind::Plus,
-                            text,
-                            loc,
-                        },
-                        '-' => Token {
-                            kind: TokenKind::Dash,
-                            text,
-                            loc,
-                        },
-                        '*' => Token {
-                            kind: TokenKind::Asterisk,
-                            text,
-                            loc,
-                        },
-                        '/' => {
-                            if let Some(_) = self.drop_char_if(|x| x == '/') {
-                                self.drop_line();
-                                continue 'again;
-                            } else {
-                                Token {
-                                    kind: TokenKind::Slash,
-                                    text,
-                                    loc,
-                                }
-                            }
-                        }
-                        '^' => Token {
-                            kind: TokenKind::Caret,
-                            text,
-                            loc,
-                        },
-                        '%' => Token {
-                            kind: TokenKind::Percent,
-                            text,
-                            loc,
-                        },
-                        '{' => Token {
-                            kind: TokenKind::OpenCurly,
-                            text,
-                            loc,
-                        },
-                        '}' => Token {
-                            kind: TokenKind::CloseCurly,
-                            text,
-                            loc,
-                        },
-                        '|' => Token {
-                            kind: TokenKind::Bar,
-                            text,
-                            loc,
-                        },
-                        '!' => Token {
-                            kind: TokenKind::Bang,
-                            text,
-                            loc,
-                        },
+                        '^' => Token {kind: TokenKind::Caret,      text, loc},
+                        '%' => Token {kind: TokenKind::Percent,    text, loc},
+                        '{' => Token {kind: TokenKind::OpenCurly,  text, loc},
+                        '}' => Token {kind: TokenKind::CloseCurly, text, loc},
+                        '|' => Token {kind: TokenKind::Bar,        text, loc},
+                        '!' => Token {kind: TokenKind::Bang,       text, loc},
                         '"' => {
                             // TODO: no support for escaped sequences inside of string literals
                             text.clear();
@@ -356,30 +279,22 @@ impl Lexer {
                                     TokenKind::UnclosedStr
                                 },
                                 text,
-                                loc,
+                                loc
                             }
                         }
                         _ => {
                             if !is_ident_char(x) {
                                 self.exhausted = true;
-                                Token {
-                                    kind: TokenKind::Invalid,
-                                    text,
-                                    loc,
-                                }
+                                Token{kind: TokenKind::Invalid, text, loc}
                             } else {
                                 while let Some(x) = self.drop_char_if(is_ident_char) {
                                     text.push(x)
                                 }
 
                                 if let Some(kind) = keyword_by_name(&text) {
-                                    Token { kind, text, loc }
+                                    Token{kind, text, loc}
                                 } else {
-                                    Token {
-                                        kind: TokenKind::Ident,
-                                        text,
-                                        loc,
-                                    }
+                                    Token{kind: TokenKind::Ident, text, loc}
                                 }
                             }
                         }
@@ -388,11 +303,7 @@ impl Lexer {
 
                 None => {
                     self.exhausted = true;
-                    Token {
-                        kind: TokenKind::End,
-                        text: "".to_string(),
-                        loc,
-                    }
+                    Token{kind: TokenKind::End, text: "".to_string(), loc}
                 }
             };
 
