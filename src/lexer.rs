@@ -149,9 +149,10 @@ impl Lexer {
     }
 
     pub fn current_line(&self) -> Vec<char> {
-        self.chars[self.bol..].iter().take_while(|&&x| x != '\n')
-            .map(|&x| x)
-            .collect()
+            self.chars[self.bol..]
+                .iter()
+                .map_while(|&x| if x == '\n' { None } else { Some(x) })
+                .collect()
     }
 
     pub fn loc(&self) -> Loc {
