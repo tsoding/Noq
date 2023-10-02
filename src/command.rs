@@ -1,3 +1,7 @@
+//! Imperative Command Language implemented on top of the Core
+//! Expression-based language with Pattern Matching and Rule
+//! Substitution. (see [engine](super::engine) module)
+
 use std::collections::HashMap;
 use std::io::Write;
 use std::fs;

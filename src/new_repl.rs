@@ -1,3 +1,4 @@
+//! In progress effort to implement a new cool REPL using termion and stuff
 use std::io::Write;
 use std::io;
 use std::fmt;
