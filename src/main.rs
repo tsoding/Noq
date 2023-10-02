@@ -10,13 +10,13 @@ use termion::input::TermRead;
 use termion::event::Key;
 
 mod engine;
-mod repl;
+mod new_repl;
 
 use engine::diagnostics::*;
 use engine::lexer::*;
 use engine::expr::*;
 use engine::rule::*;
-use repl::*;
+use new_repl::*;
 
 #[derive(Clone)]
 enum AppliedRule {
