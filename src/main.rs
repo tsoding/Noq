@@ -959,4 +959,18 @@ fn main() {
 // TODO: Ability to restore saved session
 // TODO: Custom arbitrary operators like in Haskell
 // TODO: Ask if "you really want to exit" on ^C when the history is not empty
-// Because you may want to `save` your history.
+//   Because you may want to `save` your history.
+// TODO: if a rule introduces free variables we should probably demand to specify them
+//   ```
+//   mul_id :: A*1 = 1
+//   0 {
+//     B*B*1 |! mul_id
+//   }
+//   ```
+//   results in `B*B*A*1` which is a bit unexpected. It makes more sense to expand to `B*B*B*1`.
+//   Maybe you should be obligated to specify the substitutions for such variables:
+//   ```
+//   0 {
+//     B*B*1 |! mul_id (A => B)
+//   }
+//   ```
