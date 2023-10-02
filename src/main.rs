@@ -9,19 +9,14 @@ use termion::raw::IntoRawMode;
 use termion::input::TermRead;
 use termion::event::Key;
 
-#[macro_use]
-mod lexer;
+mod engine;
 mod repl;
-#[macro_use]
-mod expr;
-mod diagnostics;
-mod rule;
 
-use lexer::*;
+use engine::diagnostics::*;
+use engine::lexer::*;
+use engine::expr::*;
+use engine::rule::*;
 use repl::*;
-use expr::*;
-use diagnostics::*;
-use rule::*;
 
 #[derive(Clone)]
 enum AppliedRule {

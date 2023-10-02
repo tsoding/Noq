@@ -6,7 +6,7 @@ use termion::clear;
 use termion::cursor;
 use termion::color;
 
-use super::expr::*;
+use super::engine::expr::*;
 
 #[derive(Default)]
 pub struct NewCoolRepl {
