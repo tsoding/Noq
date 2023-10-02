@@ -689,7 +689,7 @@ impl Context {
                                 diag.report(&old_loc, Severity::Info, &format!("the original definition is located here"));
                             }
                         }
-                        println!("defined rule `{}`", &name);
+                        diag.report(&loc, Severity::Info, &format!("defined rule `{}`", &name));
                         self.rules.insert(name, Rule::User {loc, head, body});
                     }
                 } else {
