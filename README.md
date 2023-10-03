@@ -7,7 +7,7 @@ Not [Coq](https://coq.inria.fr/). Simple expression transformer that is NOT Coq.
 ## Quick Start
 
 ```console
-$ cargo run ./examples/add.noq
+$ cargo run ./examples/peano.noq
 ```
 
 ## Main Idea
