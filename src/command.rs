@@ -539,8 +539,9 @@ impl Context {
             Command::DeleteRule(loc, name) => {
                 if self.rules.contains_key(&name) {
                     self.rules.remove(&name);
+                    diag.report(&loc, Severity::Info, &format!("rule `{}` has been removed", name));
                 } else {
-                    diag.report(&loc, Severity::Error, &format!("rule {} does not exist", name));
+                    diag.report(&loc, Severity::Error, &format!("rule `{}` does not exist", name));
                     return None
                 }
             }
