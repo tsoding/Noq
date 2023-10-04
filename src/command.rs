@@ -124,7 +124,8 @@ pub enum Command {
     ///
     /// save "session.noq" # <- the save command
     /// ```
-    Save(Loc, String)
+    Save(Loc, String),
+    List,
 }
 
 impl Command {
@@ -157,6 +158,10 @@ impl Command {
             TokenKind::Quit => {
                 lexer.next_token();
                 Some(Command::Quit)
+            }
+            TokenKind::List => {
+                lexer.next_token();
+                Some(Command::List)
             }
             TokenKind::Delete => {
                 let keyword = lexer.next_token();
@@ -393,6 +398,10 @@ impl Context {
                     pad(&mut sink, indent*2)?;
                     writeln!(sink, "quit")?
                 }
+                Command::List => {
+                    pad(&mut sink, indent*2)?;
+                    writeln!(sink, "list")?
+                }
                 Command::DeleteRule(_, name) => {
                     pad(&mut sink, indent*2)?;
                     writeln!(sink, "delete {}", name)?
@@ -535,6 +544,13 @@ impl Context {
             }
             Command::Quit => {
                 self.quit = true;
+            }
+            Command::List => {
+                for (name, rule) in self.rules.iter() {
+                    if let Rule::User{loc: _, head, body} = rule {
+                        println!("{name} :: {head} = {body}")
+                    }
+                }
             }
             Command::DeleteRule(loc, name) => {
                 if self.rules.contains_key(&name) {
