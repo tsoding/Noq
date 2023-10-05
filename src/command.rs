@@ -126,6 +126,7 @@ pub enum Command {
     Save(Loc, String),
     List,
     Show { name: Token },
+    History { keyword: Token },
 }
 
 impl Command {
@@ -162,6 +163,10 @@ impl Command {
             TokenKind::List => {
                 lexer.next_token();
                 Some(Command::List)
+            }
+            TokenKind::History => {
+                let keyword = lexer.next_token();
+                Some(Command::History{keyword})
             }
             TokenKind::Show => {
                 lexer.next_token();
@@ -543,6 +548,32 @@ impl Context {
                     if let (Rule::User{loc: _, head, body}, _) = rule {
                         println!("{name} :: {head} = {body}")
                     }
+                }
+            }
+            Command::History{keyword} => {
+                if let Some(frame) = self.shaping_stack.last() {
+                    for (_, command) in frame.history.iter() {
+                        match command {
+                            Command::ApplyRule{strategy_name, applied_rule, ..} => {
+                                match applied_rule {
+                                    AppliedRule::ByName {name, reversed, ..} => {
+                                        print!("    {name} |");
+                                        if *reversed {
+                                            print!("!");
+                                        }
+                                        println!(" {strategy_name}");
+                                    }
+                                    AppliedRule::Anonymous{head, body, ..} => {
+                                        println!("    {head} = {body} | {strategy_name}");
+                                    }
+                                }
+                            }
+                            _ => unreachable!()
+                        }
+                    }
+                } else {
+                    diag.report(&keyword.loc, Severity::Error, "no shaping in place");
+                    return None;
                 }
             }
             Command::Show{name} => {

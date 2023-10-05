@@ -36,6 +36,7 @@ pub enum TokenKind {
     Save,
     List,
     Show,
+    History,
 
     // Special Characters
     OpenParen,
@@ -66,13 +67,14 @@ pub enum TokenKind {
 
 fn keyword_by_name(text: &str) -> Option<TokenKind> {
     match text {
-        "quit"   => Some(TokenKind::Quit),
-        "undo"   => Some(TokenKind::Undo),
-        "delete" => Some(TokenKind::Delete),
-        "load"   => Some(TokenKind::Load),
-        "save"   => Some(TokenKind::Save),
-        "list"   => Some(TokenKind::List),
-        "show"   => Some(TokenKind::Show),
+        "quit"    => Some(TokenKind::Quit),
+        "undo"    => Some(TokenKind::Undo),
+        "delete"  => Some(TokenKind::Delete),
+        "load"    => Some(TokenKind::Load),
+        "save"    => Some(TokenKind::Save),
+        "list"    => Some(TokenKind::List),
+        "show"    => Some(TokenKind::Show),
+        "history" => Some(TokenKind::History),
         _ => None,
     }
 }
@@ -87,6 +89,7 @@ impl fmt::Display for TokenKind {
             Quit => write!(f, "`quit`"),
             List => write!(f, "`list`"),
             Show => write!(f, "`show`"),
+            History => write!(f, "`history`"),
             Delete => write!(f, "`delete`"),
             Load => write!(f, "`load`"),
             Save => write!(f, "`save`"),
