@@ -482,6 +482,7 @@ impl Context {
                         AppliedRule::Anonymous {loc, head, body} => Rule::User {loc, head, body},
                     };
 
+                    let previous_expr = frame.expr.clone();
                     match Strategy::by_name(&strategy_name) {
                         Some(strategy) => rule.apply(&mut frame.expr, &strategy, &loc, diag)?,
                         None => {
@@ -490,7 +491,7 @@ impl Context {
                         }
                     };
                     println!(" => {}", &frame.expr);
-                    frame.history.push((frame.expr.clone(), command));
+                    frame.history.push((previous_expr, command));
                 } else {
                     diag.report(&loc, Severity::Error, &format!("To apply a rule to an expression you need to first start shaping the expression, but no shaping is currently in place"));
                     diag.report(&loc, Severity::Info, &format!("<expression> {{    - to start shaping"));
