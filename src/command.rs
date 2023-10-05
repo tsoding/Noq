@@ -32,7 +32,7 @@ pub enum Command {
     /// ```noq
     /// sum_comm :: A + B = B + A
     /// ```
-    DefineRule(Loc, String, Rule),
+    DefineRule { name: Token, rule: Rule },
     /// Define rule via shaping
     ///
     /// Starts the process of shaping and defines a rule after it's done
@@ -269,15 +269,14 @@ impl Command {
                                     TokenKind::Equals => {
                                         lexer.next_token();
                                         let body = Expr::parse(lexer, diag)?;
-                                        Some(Command::DefineRule(
-                                            keyword.loc.clone(),
-                                            name.text,
-                                            Rule::User {
+                                        Some(Command::DefineRule {
+                                            name,
+                                            rule: Rule::User {
                                                 loc: keyword.loc,
                                                 head,
                                                 body,
                                             }
-                                        ))
+                                        })
                                     }
                                     _ => {
                                         let token = lexer.next_token();
@@ -435,20 +434,20 @@ impl Context {
                 self.process_file(loc, file_path, diag)?;
                 self.interactive = saved_interactive;
             }
-            Command::DefineRule(rule_loc, rule_name, rule) => {
-                if let Some((existing_rule, _)) = get_item_by_key(&self.rules, &rule_name) {
+            Command::DefineRule{ name, rule } => {
+                if let Some((existing_rule, _)) = get_item_by_key(&self.rules, &name.text) {
                     let loc = match existing_rule {
                         Rule::User{loc, ..} => Some(loc),
                         Rule::Replace => None,
                     };
-                    diag.report(&rule_loc, Severity::Error, &format!("redefinition of existing rule {}", rule_name));
+                    diag.report(&name.loc, Severity::Error, &format!("redefinition of existing rule {}", name.text));
                     if let Some(loc) = loc {
                         diag.report(&loc, Severity::Info, &format!("the original definition is located here"));
                     }
                     return None
                 }
-                diag.report(&rule_loc, Severity::Info, &format!("defined rule `{}`", &rule_name));
-                self.rules.push((rule_name, (rule, vec![])));
+                diag.report(&name.loc, Severity::Info, &format!("defined rule `{}`", &name.text));
+                self.rules.push((name.text, (rule, vec![])));
             }
             Command::DefineRuleViaShaping{name, expr, ..} => {
                 println!(" => {}", &expr);
