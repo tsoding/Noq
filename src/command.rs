@@ -123,8 +123,11 @@ pub enum Command {
     /// save "session.noq" # <- the save command
     /// ```
     Save(Loc, String),
+    /// List all the defined rules
     List,
+    /// Show the full definition of the rule including its history
     Show { name: Token },
+    /// Show the history of the current shaping
     History { keyword: Token },
 }
 
