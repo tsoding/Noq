@@ -73,7 +73,7 @@ pub enum Command {
     ///   ...
     /// } # <- the finish shaping command
     /// ```
-    FinishShaping(Loc),
+    FinishShaping { token: Token },
     /// Undo previusly applied rule
     ///
     /// Example:
@@ -144,8 +144,8 @@ impl Command {
                 Some(Self::Save(token.loc, token.text))
             }
             TokenKind::CloseCurly => {
-                let keyword = lexer.next_token();
-                Some(Command::FinishShaping(keyword.loc))
+                let token = lexer.next_token();
+                Some(Command::FinishShaping{token})
             }
             TokenKind::Undo => {
                 let keyword = lexer.next_token();
@@ -493,7 +493,7 @@ impl Context {
                     return None
                 }
             }
-            Command::FinishShaping(loc) => {
+            Command::FinishShaping{token} => {
                 if let Some(mut frame) = self.shaping_stack.pop() {
                     let body = frame.expr;
                     if let Some((name, head)) = frame.rule_via_shaping.take() {
@@ -502,17 +502,17 @@ impl Context {
                                 Rule::User{loc, ..} => Some(loc.clone()),
                                 Rule::Replace => None,
                             };
-                            diag.report(&loc, Severity::Error, &format!("redefinition of existing rule {}", name));
+                            diag.report(&token.loc, Severity::Error, &format!("redefinition of existing rule {}", name));
                             if let Some(old_loc) = old_loc {
                                 diag.report(&old_loc, Severity::Info, &format!("the original definition is located here"));
                             }
                             return None
                         }
-                        diag.report(&loc, Severity::Info, &format!("defined rule `{}`", &name));
-                        self.rules.push((name, (Rule::User {loc, head, body}, frame.history)));
+                        diag.report(&token.loc, Severity::Info, &format!("defined rule `{}`", &name));
+                        self.rules.push((name, (Rule::User {loc: token.loc, head, body}, frame.history)));
                     }
                 } else {
-                    diag.report(&loc, Severity::Error, "no shaping in place");
+                    diag.report(&token.loc, Severity::Error, "no shaping in place");
                     return None
                 }
             }
