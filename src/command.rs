@@ -18,8 +18,8 @@ pub enum AppliedRule {
         reversed: bool,
     },
     Anonymous {
-        loc: Loc,
         head: Expr,
+        equals: Token,
         body: Expr,
     },
 }
@@ -64,11 +64,7 @@ pub enum Command {
     ///   ...
     /// }
     /// ```
-    ApplyRule {
-        loc: Loc,
-        strategy_name: String,
-        applied_rule: AppliedRule,
-    },
+    ApplyRule { bar: Token, strategy_name: Token, applied_rule: AppliedRule },
     /// Finish the process of shaping
     ///
     /// Example:
@@ -191,7 +187,7 @@ impl Command {
                 match lexer.peek_token().kind {
                     TokenKind::Bar => {
                         let bar = lexer.next_token();
-                        let (reversed, strategy_name_token) = {
+                        let (reversed, strategy_name) = {
                             let token = lexer.next_token();
                             if token.kind == TokenKind::Bang {
                                 (true, lexer.expect_token(TokenKind::Ident).map_err(|(expected_kind, actual_token)| report_unexpected_token_for_strategy_name(diag, &expected_kind, &actual_token)).ok()?)
@@ -204,8 +200,8 @@ impl Command {
                         };
                         if let Expr::Sym(name) = expr {
                             Some(Command::ApplyRule {
-                                loc: bar.loc.clone(),
-                                strategy_name: strategy_name_token.text,
+                                bar,
+                                strategy_name,
                                 applied_rule: AppliedRule::ByName { name, reversed },
                             })
                         } else {
@@ -217,10 +213,10 @@ impl Command {
                         let head = expr;
                         let equals = lexer.next_token();
                         let body = Expr::parse(lexer, diag)?;
-                        lexer.expect_token(TokenKind::Bar).map_err(|(expected_kind, actual_token)| {
+                        let bar = lexer.expect_token(TokenKind::Bar).map_err(|(expected_kind, actual_token)| {
                             diag.report(&actual_token.loc, Severity::Error, &format!("Expected {expected_kind} since you defined an annonymous rule `{head} = {body}`, which must be applied in-place. But instead of {expected_kind} we got {actual_token}", actual_token = actual_token.report()))
                         }).ok()?;
-                        let (reversed, strategy_name_token) = {
+                        let (reversed, strategy_name) = {
                             let token = lexer.next_token();
                             if token.kind == TokenKind::Bang {
                                 (true, lexer.expect_token(TokenKind::Ident).map_err(|(expected_kind, actual_token)| report_unexpected_token_for_strategy_name(diag, &expected_kind, &actual_token)).ok()?)
@@ -232,18 +228,18 @@ impl Command {
                             }
                         };
                         Some(Command::ApplyRule {
-                            loc: equals.loc.clone(),
-                            strategy_name: strategy_name_token.text,
+                            bar,
+                            strategy_name,
                             applied_rule: if reversed {
                                 AppliedRule::Anonymous {
-                                    loc: equals.loc,
                                     head: body,
+                                    equals,
                                     body: head,
                                 }
                             } else {
                                 AppliedRule::Anonymous {
-                                    loc: equals.loc,
                                     head,
+                                    equals,
                                     body,
                                 }
                             }
@@ -390,10 +386,10 @@ impl Context {
                                             if *reversed {
                                                 write!(sink, "!")?;
                                             }
-                                            writeln!(sink, " {strategy_name}")?;
+                                            writeln!(sink, " {strategy_name}", strategy_name = strategy_name.text)?;
                                         }
                                         AppliedRule::Anonymous{head, body, ..} => {
-                                            writeln!(sink, "    {head} = {body} | {strategy_name}")?;
+                                            writeln!(sink, "    {head} = {body} | {strategy_name}", strategy_name = strategy_name.text)?;
                                         }
                                     }
                                 }
@@ -457,7 +453,7 @@ impl Context {
                 println!(" => {}", &expr);
                 self.shaping_stack.push(ShapingFrame::new(expr))
             },
-            Command::ApplyRule {loc, strategy_name, applied_rule} => {
+            Command::ApplyRule {bar, strategy_name, applied_rule} => {
                 if let Some(frame) = self.shaping_stack.last_mut() {
                     let rule = match applied_rule {
                         AppliedRule::ByName { name, reversed } => match get_item_by_key(&self.rules, &name.text) {
@@ -465,7 +461,7 @@ impl Context {
                                 match rule.clone() {
                                     Rule::User {loc, head, body} => Rule::User{loc, head: body, body: head},
                                     Rule::Replace => {
-                                        diag.report(&loc, Severity::Error, &format!("irreversible rule"));
+                                        diag.report(&bar.loc, Severity::Error, &format!("irreversible rule"));
                                         return None;
                                     }
                                 }
@@ -474,26 +470,26 @@ impl Context {
                             }
 
                             None => {
-                                diag.report(&loc, Severity::Error, &format!("rule {} does not exist", name.text));
+                                diag.report(&bar.loc, Severity::Error, &format!("rule {} does not exist", name.text));
                                 return None;
                             }
                         }
-                        AppliedRule::Anonymous {loc, head, body} => Rule::User {loc, head, body},
+                        AppliedRule::Anonymous {head, equals, body} => Rule::User {loc: equals.loc, head, body},
                     };
 
                     let previous_expr = frame.expr.clone();
-                    match Strategy::by_name(&strategy_name) {
-                        Some(strategy) => rule.apply(&mut frame.expr, &strategy, &loc, diag)?,
+                    match Strategy::by_name(&strategy_name.text) {
+                        Some(strategy) => rule.apply(&mut frame.expr, &strategy, &bar.loc, diag)?,
                         None => {
-                            diag.report(&loc, Severity::Error, &format!("unknown rule application strategy '{}'", strategy_name));
+                            diag.report(&bar.loc, Severity::Error, &format!("unknown rule application strategy '{}'", strategy_name.text));
                             return None
                         }
                     };
                     println!(" => {}", &frame.expr);
                     frame.history.push((previous_expr, command));
                 } else {
-                    diag.report(&loc, Severity::Error, &format!("To apply a rule to an expression you need to first start shaping the expression, but no shaping is currently in place"));
-                    diag.report(&loc, Severity::Info, &format!("<expression> {{    - to start shaping"));
+                    diag.report(&bar.loc, Severity::Error, &format!("To apply a rule to an expression you need to first start shaping the expression, but no shaping is currently in place"));
+                    diag.report(&bar.loc, Severity::Info, &format!("<expression> {{    - to start shaping"));
                     return None
                 }
             }
@@ -555,10 +551,10 @@ impl Context {
                                         if *reversed {
                                             print!("!");
                                         }
-                                        println!(" {strategy_name}");
+                                        println!(" {strategy_name}", strategy_name = strategy_name.text);
                                     }
                                     AppliedRule::Anonymous{head, body, ..} => {
-                                        println!("    {head} = {body} | {strategy_name}");
+                                        println!("    {head} = {body} | {strategy_name}", strategy_name = strategy_name.text);
                                     }
                                 }
                             }
@@ -585,10 +581,10 @@ impl Context {
                                                 if *reversed {
                                                     print!("!");
                                                 }
-                                                println!(" {strategy_name}");
+                                                println!(" {strategy_name}", strategy_name = strategy_name.text);
                                             }
                                             AppliedRule::Anonymous{head, body, ..} => {
-                                                println!("    {head} = {body} | {strategy_name}");
+                                                println!("    {head} = {body} | {strategy_name}", strategy_name = strategy_name.text);
                                             }
                                         }
                                     }
