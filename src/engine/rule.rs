@@ -139,13 +139,13 @@ impl Rule {
                         let meta_strategy = bindings.get("Strategy").expect("Variable `Strategy` is present in the meta pattern");
                         if let Expr::Sym(meta_strategy_name) = meta_strategy {
                             *expr = bindings.get("Expr").expect("Variable `Expr` is present in the meta pattern").clone();
-                            match Strategy::by_name(meta_strategy_name) {
+                            match Strategy::by_name(&meta_strategy_name.text) {
                                 Some(strategy) => {
                                     meta_rule.apply(expr, &strategy, apply_command_loc, diag)?;
                                     Some(false)
                                 }
                                 None => {
-                                    diag.report(&apply_command_loc, Severity::Error, &format!("unknown rule application strategy '{}'", meta_strategy_name));
+                                    diag.report(&apply_command_loc, Severity::Error, &format!("unknown rule application strategy '{}'", meta_strategy_name.report()));
                                     None
                                 }
                             }

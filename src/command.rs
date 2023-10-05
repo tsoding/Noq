@@ -136,14 +136,14 @@ impl Command {
             TokenKind::Load => {
                 lexer.next_token();
                 let token = lexer.expect_token(TokenKind::Str).map_err(|(expected_kind, actual_token)| {
-                    diag.report(&actual_token.loc, Severity::Error, &format!("`load` command expects {expected_kind} as the file path, but got {actual_token} instead"));
+                    diag.report(&actual_token.loc, Severity::Error, &format!("`load` command expects {expected_kind} as the file path, but got {actual_token} instead", actual_token = actual_token.report()));
                 }).ok()?;
                 Some(Self::Load(token.loc, token.text))
             },
             TokenKind::Save => {
                 lexer.next_token();
                 let token = lexer.expect_token(TokenKind::Str).map_err(|(expected_kind, actual_token)| {
-                    diag.report(&actual_token.loc, Severity::Error, &format!("`save` command expects {expected_kind} as the file path, but got {actual_token} instead"));
+                    diag.report(&actual_token.loc, Severity::Error, &format!("`save` command expects {expected_kind} as the file path, but got {actual_token} instead", actual_token = actual_token.report()));
                 }).ok()?;
                 Some(Self::Save(token.loc, token.text))
             }
@@ -166,7 +166,7 @@ impl Command {
             TokenKind::Delete => {
                 let keyword = lexer.next_token();
                 let name = lexer.expect_token(TokenKind::Ident).map_err(|(expected_kind, actual_token)| {
-                    diag.report(&actual_token.loc, Severity::Error, &format!("`delete` command expects {expected_kind} as an argument but got {actual_token} instead"));
+                    diag.report(&actual_token.loc, Severity::Error, &format!("`delete` command expects {expected_kind} as an argument but got {actual_token} instead", actual_token = actual_token.report()));
                 }).ok()?.text;
                 Some(Command::DeleteRule(keyword.loc, name))
             }
@@ -174,7 +174,7 @@ impl Command {
                 let expr = Expr::parse(lexer, diag)?;
 
                 fn report_unexpected_token_for_strategy_name(diag: &mut impl Diagnoster, expected_kind: &TokenKind, actual_token: &Token) {
-                    diag.report(&actual_token.loc, Severity::Error, &format!("applied strategy name must be {expected_kind}, but we got {actual_token} instead"));
+                    diag.report(&actual_token.loc, Severity::Error, &format!("applied strategy name must be {expected_kind}, but we got {actual_token} instead", actual_token = actual_token.report()));
                 }
 
                 match lexer.peek_token().kind {
@@ -197,7 +197,7 @@ impl Command {
                                 strategy_name: strategy_name_token.text,
                                 applied_rule: AppliedRule::ByName {
                                     loc: bar.loc,
-                                    name: rule_name,
+                                    name: rule_name.text,
                                     reversed,
                                 },
                             })
@@ -211,7 +211,7 @@ impl Command {
                         let equals = lexer.next_token();
                         let body = Expr::parse(lexer, diag)?;
                         lexer.expect_token(TokenKind::Bar).map_err(|(expected_kind, actual_token)| {
-                            diag.report(&actual_token.loc, Severity::Error, &format!("Expected {expected_kind} since you defined an annonymous rule `{head} = {body}`, which must be applied in-place. But instead of {expected_kind} we got {actual_token}"))
+                            diag.report(&actual_token.loc, Severity::Error, &format!("Expected {expected_kind} since you defined an annonymous rule `{head} = {body}`, which must be applied in-place. But instead of {expected_kind} we got {actual_token}", actual_token = actual_token.report()))
                         }).ok()?;
                         let (reversed, strategy_name_token) = {
                             let token = lexer.next_token();
@@ -255,7 +255,7 @@ impl Command {
                                     TokenKind::OpenCurly =>  {
                                         lexer.next_token();
                                         Some(Command::DefineRuleViaShaping {
-                                            name,
+                                            name: name.text,
                                             expr: head
                                         })
                                     }
@@ -264,7 +264,7 @@ impl Command {
                                         let body = Expr::parse(lexer, diag)?;
                                         Some(Command::DefineRule(
                                             keyword.loc.clone(),
-                                            name,
+                                            name.text,
                                             Rule::User {
                                                 loc: keyword.loc,
                                                 head,
@@ -274,7 +274,7 @@ impl Command {
                                     }
                                     _ => {
                                         let token = lexer.next_token();
-                                        diag.report(&token.loc, Severity::Error, &format!("unexpected Rule Definition Separator {}", token));
+                                        diag.report(&token.loc, Severity::Error, &format!("unexpected Rule Definition Separator {}", token.report()));
                                         None
                                     }
                                 }

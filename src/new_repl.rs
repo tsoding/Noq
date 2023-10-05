@@ -131,10 +131,10 @@ impl<'a> fmt::Display for HighlightedSubexpr<'a> {
         } else {
             // TODO: get rid of duplicate code in fmt::Display instance of HighlightedSubexpr and Expr
             match expr {
-                Expr::Sym(name) | Expr::Var(name) => write!(f, "{}", name),
+                Expr::Sym(name) | Expr::Var(name) => write!(f, "{}", name.text),
                 Expr::Fun(head, args) => {
                     match &**head {
-                        Expr::Sym(name) | Expr::Var(name) => write!(f, "{}", name)?,
+                        Expr::Sym(name) | Expr::Var(name) => write!(f, "{}", name.text)?,
                         other => write!(f, "({})", HighlightedSubexpr{expr: other, subexpr})?,
                     }
                     write!(f, "(")?;
@@ -176,7 +176,7 @@ pub fn start() {
     fn parse_match(lexer: &mut Lexer, diag: &mut impl Diagnoster) -> Option<(Expr, Expr)> {
         let head = Expr::parse(lexer, diag)?;
         lexer.expect_token(TokenKind::Equals).map_err(|(expected_kind, actual_token)| {
-            diag.report(&actual_token.loc, Severity::Error, &format!("Expected {expected_kind} as the separator between the head and the body of the rule but got {actual_token} instead."));
+            diag.report(&actual_token.loc, Severity::Error, &format!("Expected {expected_kind} as the separator between the head and the body of the rule but got {actual_token} instead.", actual_token = actual_token.report()));
         }).ok()?;
         let body = Expr::parse(lexer, diag)?;
         Some((head, body))

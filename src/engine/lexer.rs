@@ -111,6 +111,7 @@ impl fmt::Display for TokenKind {
     }
 }
 
+
 #[derive(Debug, Clone)]
 pub struct Token {
     pub kind: TokenKind,
@@ -118,13 +119,29 @@ pub struct Token {
     pub loc: Loc,
 }
 
-impl fmt::Display for Token {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        if self.text.is_empty() {
-            write!(f, "{}", self.kind)
+impl Token {
+    pub fn report(&self) -> ReportToken<'_> {
+        ReportToken { inner: self }
+    }
+}
+
+pub struct ReportToken<'a> {
+    pub inner: &'a Token
+}
+
+impl fmt::Display for ReportToken<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.inner.text.is_empty() {
+            write!(f, "{}", self.inner.kind)
         } else {
-            write!(f, "{} `{}`", self.kind, self.text)
+            write!(f, "{} `{}`", self.inner.kind, self.inner.text)
         }
+    }
+}
+
+impl PartialEq for Token {
+    fn eq(&self, other: &Token) -> bool {
+        self.kind == other.kind && self.text == other.text
     }
 }
 

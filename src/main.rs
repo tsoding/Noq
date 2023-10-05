@@ -49,7 +49,7 @@ fn repl_parse_and_process_command(context: &mut Context, lexer: &mut Lexer, diag
     let command = Command::parse(lexer, diag)?;
     let token = lexer.peek_token();
     if token.kind != TokenKind::End {
-        diag.report(&token.loc, Severity::Error, &format!("unexpected token {} after the End of the Command", token));
+        diag.report(&token.loc, Severity::Error, &format!("unexpected token {} after the End of the Command", token.report()));
         return None;
     }
     context.process_command(command, diag)?;

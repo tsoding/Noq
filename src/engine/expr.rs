@@ -4,6 +4,8 @@ use std::collections::HashMap;
 use super::lexer::*;
 use super::diagnostics::*;
 
+pub type Bindings = HashMap<String, Expr>;
+
 // TODO: unary minus
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum Op {
@@ -59,18 +61,18 @@ impl fmt::Display for Op {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
-    Sym(String),
-    Var(String),
+    Sym(Token),
+    Var(Token),
     Fun(Box<Expr>, Vec<Expr>),
     Op(Op, Box<Expr>, Box<Expr>),
 }
 
 impl Expr {
-    pub fn substitute(&mut self, bindings: &HashMap<String, Expr>) {
+    pub fn substitute(&mut self, bindings: &Bindings) {
         match self {
             Self::Sym(_) => {},
 
-            Self::Var(name) => if let Some(value) = bindings.get(name) {
+            Self::Var(name) => if let Some(value) = bindings.get(&name.text) {
                 *self = value.clone()
             }
 
@@ -88,12 +90,21 @@ impl Expr {
         }
     }
 
-    pub fn parse_ident(name: &str) -> Self {
-        let x = name.chars().next().expect("Empty names are not allowed. This might be a bug in the lexer.");
+    pub fn make_ident(name: &str, loc: Loc) -> Self {
+        Self::parse_ident(Token {
+            kind: TokenKind::Ident,
+            text: name.to_string(),
+            loc,
+        })
+    }
+
+    pub fn parse_ident(token: Token) -> Self {
+        assert!(token.kind == TokenKind::Ident);
+        let x = token.text.chars().next().expect("Empty names are not allowed. This might be a bug in the lexer.");
         if x.is_uppercase() || x == '_' {
-            Self::Var(name.to_string())
+            Self::Var(token)
         } else {
-            Self::Sym(name.to_string())
+            Self::Sym(token)
         }
     }
 
@@ -111,7 +122,7 @@ impl Expr {
         use TokenKind::*;
         let mut args = Vec::new();
         let open_paren_token = lexer.expect_token(OpenParen).map_err(|(expected_kind, actual_token)| {
-            diag.report(&actual_token.loc, Severity::Error, &format!("Functor argument list must start with {}, but we got {} instead", expected_kind, actual_token))
+            diag.report(&actual_token.loc, Severity::Error, &format!("Functor argument list must start with {}, but we got {} instead", expected_kind, actual_token.report()))
         }).ok()?;
         if lexer.peek_token().kind == CloseParen {
             lexer.next_token();
@@ -123,7 +134,7 @@ impl Expr {
             args.push(Self::parse(lexer, diag)?);
         }
         lexer.expect_token(CloseParen).map_err(|(expected_kind, actual_token)| {
-            diag.report(&actual_token.loc, Severity::Error, &format!("Functor argument list must end with {}, but we got {} instead", expected_kind, actual_token));
+            diag.report(&actual_token.loc, Severity::Error, &format!("Functor argument list must end with {}, but we got {} instead", expected_kind, actual_token.report()));
             diag.report(&open_paren_token.loc, Severity::Info, &format!("The corresponding {} is here.", open_paren_token.kind));
         }).ok()?;
         Some(args)
@@ -136,14 +147,14 @@ impl Expr {
                 TokenKind::OpenParen => {
                     let result = Self::parse(lexer, diag)?;
                     lexer.expect_token(TokenKind::CloseParen).map_err(|(expected_kind, actual_token)| {
-                        diag.report(&actual_token.loc, Severity::Error, &format!("Expected {} at the end of the expression, but we got {} instead.", expected_kind, &actual_token));
+                        diag.report(&actual_token.loc, Severity::Error, &format!("Expected {} at the end of the expression, but we got {} instead.", expected_kind, actual_token.report()));
                         diag.report(&token.loc, Severity::Info, &format!("The corresponding {} is here.", token.kind));
                     }).ok()?;
                     result
                 }
 
                 TokenKind::Ident => {
-                    Self::parse_ident(&token.text)
+                    Self::parse_ident(token)
                 },
 
                 _ => {
@@ -187,20 +198,20 @@ impl Expr {
         Self::parse_binary_operator(lexer, 0, diag)
     }
 
-    pub fn pattern_match(&self, value: &Expr) -> Option<HashMap<String, Expr>> {
-        fn pattern_match_impl(pattern: &Expr, value: &Expr, bindings: &mut HashMap<String, Expr>) -> bool {
+    pub fn pattern_match(&self, value: &Expr) -> Option<Bindings> {
+        fn pattern_match_impl(pattern: &Expr, value: &Expr, bindings: &mut Bindings) -> bool {
             use Expr::*;
             match (pattern, value) {
                 (Sym(name1), Sym(name2)) => {
                     name1 == name2
                 }
                 (Var(name), _) => {
-                    if name == "_" {
+                    if name.text == "_" {
                         true
-                    } else if let Some(bound_value) = bindings.get(name) {
+                    } else if let Some(bound_value) = bindings.get(&name.text) {
                         bound_value == value
                     } else {
-                        bindings.insert(name.clone(), value.clone());
+                        bindings.insert(name.text.clone(), value.clone());
                         true
                     }
                 }
@@ -260,20 +271,20 @@ macro_rules! fun_args {
 #[allow(unused_macros)]
 macro_rules! expr {
     ($name:ident) => {
-        Expr::parse_ident(stringify!($name))
+        Expr::make_ident(stringify!($name), loc_here!())
     };
     ($name:ident($($args:tt)*)) => {
-        Expr::Fun(Box::new(Expr::parse_ident(stringify!($name))), fun_args!($($args)*))
+        Expr::Fun(Box::new(Expr::make_ident(stringify!($name), loc_here!())), fun_args!($($args)*))
     };
 }
 
 impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Expr::Sym(name) | Expr::Var(name) => write!(f, "{}", name),
+            Expr::Sym(name) | Expr::Var(name) => write!(f, "{}", name.text),
             Expr::Fun(head, args) => {
                 match &**head {
-                    Expr::Sym(name) | Expr::Var(name) => write!(f, "{}", name)?,
+                    Expr::Sym(name) | Expr::Var(name) => write!(f, "{}", name.text)?,
                     other => write!(f, "({})", other)?,
                 }
                 write!(f, "(")?;
