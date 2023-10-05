@@ -490,9 +490,7 @@ impl Context {
                         }
                     };
                     println!(" => {}", &frame.expr);
-                    if self.interactive {
-                        frame.history.push((frame.expr.clone(), command));
-                    }
+                    frame.history.push((frame.expr.clone(), command));
                 } else {
                     diag.report(&loc, Severity::Error, &format!("To apply a rule to an expression you need to first start shaping the expression, but no shaping is currently in place"));
                     diag.report(&loc, Severity::Info, &format!("<expression> {{    - to start shaping"));
