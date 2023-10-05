@@ -14,8 +14,7 @@ use super::engine::rule::*;
 #[derive(Clone)]
 pub enum AppliedRule {
     ByName {
-        loc: Loc,
-        name: String,
+        name: Token,
         reversed: bool,
     },
     Anonymous {
@@ -203,15 +202,11 @@ impl Command {
                                 return None;
                             }
                         };
-                        if let Expr::Sym(rule_name) = expr {
+                        if let Expr::Sym(name) = expr {
                             Some(Command::ApplyRule {
                                 loc: bar.loc.clone(),
                                 strategy_name: strategy_name_token.text,
-                                applied_rule: AppliedRule::ByName {
-                                    loc: bar.loc,
-                                    name: rule_name.text,
-                                    reversed,
-                                },
+                                applied_rule: AppliedRule::ByName { name, reversed },
                             })
                         } else {
                             diag.report(&keyword_loc, Severity::Error, &format!("Applied rule must be a symbol but got {} instead", expr.human_name()));
@@ -391,8 +386,8 @@ impl Context {
                             match command {
                                 Command::ApplyRule{strategy_name, applied_rule, ..} => {
                                     match applied_rule {
-                                        AppliedRule::ByName {name, reversed, ..} => {
-                                            write!(sink, "    {name} |")?;
+                                        AppliedRule::ByName { name, reversed } => {
+                                            write!(sink, "    {name} |", name = name.text)?;
                                             if *reversed {
                                                 write!(sink, "!")?;
                                             }
@@ -466,7 +461,7 @@ impl Context {
             Command::ApplyRule {loc, strategy_name, applied_rule} => {
                 if let Some(frame) = self.shaping_stack.last_mut() {
                     let rule = match applied_rule {
-                        AppliedRule::ByName {loc, name, reversed} => match get_item_by_key(&self.rules, &name) {
+                        AppliedRule::ByName { name, reversed } => match get_item_by_key(&self.rules, &name.text) {
                             Some((rule, _)) => if reversed {
                                 match rule.clone() {
                                     Rule::User {loc, head, body} => Rule::User{loc, head: body, body: head},
@@ -480,7 +475,7 @@ impl Context {
                             }
 
                             None => {
-                                diag.report(&loc, Severity::Error, &format!("rule {} does not exist", name));
+                                diag.report(&loc, Severity::Error, &format!("rule {} does not exist", name.text));
                                 return None;
                             }
                         }
@@ -556,8 +551,8 @@ impl Context {
                         match command {
                             Command::ApplyRule{strategy_name, applied_rule, ..} => {
                                 match applied_rule {
-                                    AppliedRule::ByName {name, reversed, ..} => {
-                                        print!("    {name} |");
+                                    AppliedRule::ByName { name, reversed } => {
+                                        print!("    {name} |", name = name.text);
                                         if *reversed {
                                             print!("!");
                                         }
@@ -586,8 +581,8 @@ impl Context {
                                 match command {
                                     Command::ApplyRule{strategy_name, applied_rule, ..} => {
                                         match applied_rule {
-                                            AppliedRule::ByName {name, reversed, ..} => {
-                                                print!("    {name} |");
+                                            AppliedRule::ByName { name, reversed } => {
+                                                print!("    {name} |", name = name.text);
                                                 if *reversed {
                                                     print!("!");
                                                 }
