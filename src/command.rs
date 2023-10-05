@@ -43,10 +43,7 @@ pub enum Command {
     ///   ...
     /// }
     /// ```
-    DefineRuleViaShaping {
-        name: String,
-        expr: Expr,
-    },
+    DefineRuleViaShaping { name: String, expr: Expr },
     /// Starting shaping
     ///
     /// Example:
@@ -55,7 +52,7 @@ pub enum Command {
     ///   ...
     /// }
     /// ```
-    StartShaping(Loc, Expr),
+    StartShaping { expr: Expr },
     /// Apply rule during shaping
     ///
     /// Example:
@@ -253,8 +250,8 @@ impl Command {
                         })
                     }
                     TokenKind::OpenCurly  => {
-                        let keyword = lexer.next_token();
-                        Some(Command::StartShaping(keyword.loc, expr))
+                        lexer.next_token();
+                        Some(Command::StartShaping { expr })
                     }
                     TokenKind::DoubleColon => {
                         let keyword = lexer.next_token();
@@ -456,7 +453,7 @@ impl Context {
                 println!(" => {}", &expr);
                 self.shaping_stack.push(ShapingFrame::new_rule_via_shaping(name, expr))
             },
-            Command::StartShaping(_loc, expr) => {
+            Command::StartShaping {expr} => {
                 println!(" => {}", &expr);
                 self.shaping_stack.push(ShapingFrame::new(expr))
             },
