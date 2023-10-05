@@ -501,7 +501,6 @@ impl Context {
             Command::FinishShaping(loc) => {
                 if let Some(mut frame) = self.shaping_stack.pop() {
                     let body = frame.expr;
-                    println!(" => {}", &body);
                     if let Some((name, head)) = frame.rule_via_shaping.take() {
                         if let Some((existing_rule, _)) = get_item_by_key(&self.rules, &name) {
                             let old_loc = match existing_rule {
