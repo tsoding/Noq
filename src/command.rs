@@ -512,6 +512,7 @@ impl Context {
                             if let Some(old_loc) = old_loc {
                                 diag.report(&old_loc, Severity::Info, &format!("the original definition is located here"));
                             }
+                            return None
                         }
                         diag.report(&loc, Severity::Info, &format!("defined rule `{}`", &name));
                         self.rules.push((name, (Rule::User {loc, head, body}, frame.history)));
