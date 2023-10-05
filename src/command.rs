@@ -2,7 +2,6 @@
 //! Expression-based language with Pattern Matching and Rule
 //! Substitution. (see [engine](super::engine) module)
 
-use std::collections::HashMap;
 use std::io::Write;
 use std::fs;
 use std::io;
@@ -330,17 +329,40 @@ fn pad(sink: &mut impl Write, width: usize) -> io::Result<()> {
 
 pub struct Context {
     interactive: bool,
-    rules: HashMap<String, Rule>,
+    // NOTE: We don't use HashMap in here to preserve the order of the definition of the `list` command.
+    // The order of the definition is very important for UX in REPL.
+    // TODO: Do something about the performance when it actually starts to matter.
+    // I don't think we work with too many definitions right now.
+    rules: Vec<(String, Rule)>,
     pub shaping_stack: Vec<ShapingFrame>,
     history: Vec<Command>,
     pub quit: bool,
 }
 
+fn get_item_by_key<'a, K, V>(assoc: &'a [(K, V)], needle: &'a K) -> Option<&'a V> where K: PartialEq<K> {
+    for (key, value) in assoc.iter() {
+        if key == needle {
+            return Some(value)
+        }
+    }
+    None
+}
+
+fn delete_item_by_key<'a, K, V>(assoc: &'a mut Vec<(K, V)>, needle: &'a K) -> bool where K: PartialEq<K> {
+    for i in 0..assoc.len() {
+        if &assoc[i].0 == needle {
+            assoc.remove(i);
+            return true
+        }
+    }
+    false
+}
+
 impl Context {
     pub fn new(interactive: bool) -> Self {
-        let mut rules = HashMap::new();
+        let mut rules = Vec::new();
         // TODO: you can potentially `delete` the replace rule (you should not be able to do that)
-        rules.insert("replace".to_string(), Rule::Replace);
+        rules.push(("replace".to_string(), Rule::Replace));
         Self {
             interactive,
             rules,
@@ -443,7 +465,7 @@ impl Context {
                 self.interactive = saved_interactive;
             }
             Command::DefineRule(rule_loc, rule_name, rule) => {
-                if let Some(existing_rule) = self.rules.get(&rule_name) {
+                if let Some(existing_rule) = get_item_by_key(&self.rules, &rule_name) {
                     let loc = match existing_rule {
                         Rule::User{loc, ..} => Some(loc),
                         Rule::Replace => None,
@@ -455,7 +477,7 @@ impl Context {
                     return None
                 }
                 diag.report(&rule_loc, Severity::Info, &format!("defined rule `{}`", &rule_name));
-                self.rules.insert(rule_name, rule);
+                self.rules.push((rule_name, rule));
             }
             Command::DefineRuleViaShaping{name, expr, ..} => {
                 println!(" => {}", &expr);
@@ -468,7 +490,7 @@ impl Context {
             Command::ApplyRule {loc, strategy_name, applied_rule} => {
                 if let Some(frame) = self.shaping_stack.last_mut() {
                     let rule =  match applied_rule {
-                        AppliedRule::ByName {loc, name, reversed} => match self.rules.get(&name) {
+                        AppliedRule::ByName {loc, name, reversed} => match get_item_by_key(&self.rules, &name) {
                             Some(rule) => if reversed {
                                 match rule.clone() {
                                     Rule::User {loc, head, body} => Rule::User{loc, head: body, body: head},
@@ -510,7 +532,7 @@ impl Context {
                 if let Some(mut frame) = self.shaping_stack.pop() {
                     let body = frame.expr;
                     if let Some((name, head)) = frame.rule_via_shaping.take() {
-                        if let Some(existing_rule) = self.rules.get(&name) {
+                        if let Some(existing_rule) = get_item_by_key(&self.rules, &name) {
                             let old_loc = match existing_rule {
                                 Rule::User{loc, ..} => Some(loc.clone()),
                                 Rule::Replace => None,
@@ -521,7 +543,7 @@ impl Context {
                             }
                         }
                         diag.report(&loc, Severity::Info, &format!("defined rule `{}`", &name));
-                        self.rules.insert(name, Rule::User {loc, head, body});
+                        self.rules.push((name, Rule::User {loc, head, body}));
                     }
                 } else {
                     diag.report(&loc, Severity::Error, "no shaping in place");
@@ -553,8 +575,7 @@ impl Context {
                 }
             }
             Command::DeleteRule(loc, name) => {
-                if self.rules.contains_key(&name) {
-                    self.rules.remove(&name);
+                if delete_item_by_key(&mut self.rules, &name) {
                     diag.report(&loc, Severity::Info, &format!("rule `{}` has been removed", name));
                 } else {
                     diag.report(&loc, Severity::Error, &format!("rule `{}` does not exist", name));
