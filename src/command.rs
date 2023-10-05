@@ -125,6 +125,7 @@ pub enum Command {
     /// ```
     Save(Loc, String),
     List,
+    Show { name: Token },
 }
 
 impl Command {
@@ -161,6 +162,13 @@ impl Command {
             TokenKind::List => {
                 lexer.next_token();
                 Some(Command::List)
+            }
+            TokenKind::Show => {
+                lexer.next_token();
+                let name = lexer.expect_token(TokenKind::Ident).map_err(|(expected_kind, actual_token)| {
+                    diag.report(&actual_token.loc, Severity::Error, &format!("`show` command expects {expected_kind} as the rule name, but got {actual_token} instead", actual_token = actual_token.report()));
+                }).ok()?;
+                Some(Command::Show{name})
             }
             TokenKind::Delete => {
                 let keyword = lexer.next_token();
@@ -301,7 +309,7 @@ impl Command {
 
 pub struct ShapingFrame {
     pub expr: Expr,
-    history: Vec<Expr>,
+    history: Vec<(Expr, Command)>,
     rule_via_shaping: Option<(String, Expr)>,
 }
 
@@ -323,19 +331,14 @@ impl ShapingFrame {
     }
 }
 
-fn pad(sink: &mut impl Write, width: usize) -> io::Result<()> {
-    write!(sink, "{:>width$}", "")
-}
-
 pub struct Context {
     interactive: bool,
     // NOTE: We don't use HashMap in here to preserve the order of the definition of the `list` command.
     // The order of the definition is very important for UX in REPL.
     // TODO: Do something about the performance when it actually starts to matter.
     // I don't think we work with too many definitions right now.
-    rules: Vec<(String, Rule)>,
+    rules: Vec<(String, (Rule, Vec<(Expr, Command)>))>,
     pub shaping_stack: Vec<ShapingFrame>,
-    history: Vec<Command>,
     pub quit: bool,
 }
 
@@ -362,80 +365,48 @@ impl Context {
     pub fn new(interactive: bool) -> Self {
         let mut rules = Vec::new();
         // TODO: you can potentially `delete` the replace rule (you should not be able to do that)
-        rules.push(("replace".to_string(), Rule::Replace));
+        rules.push(("replace".to_string(), (Rule::Replace, vec![])));
         Self {
             interactive,
             rules,
             shaping_stack: Default::default(),
             quit: false,
-            history: Default::default(),
         }
     }
 
     fn save_history(&self, file_path: &str) -> Result<(), io::Error> {
         let mut sink = fs::File::create(file_path)?;
-        let mut indent = 0;
-        for command in self.history.iter() {
-            match command {
-                Command::DefineRule(_, name, rule) => match rule {
-                    Rule::User{head, body, ..} => {
-                        pad(&mut sink, indent*2)?;
-                        writeln!(sink, "{} :: {} = {}", name, head, body)?
-                    },
-                    Rule::Replace => unreachable!("There is no way for the user to create such rule"),
-                }
-                Command::DefineRuleViaShaping {name, expr} => {
-                    pad(&mut sink, indent*2)?;
-                    writeln!(sink, "{} :: {} {{", name, expr)?;
-                    indent += 1
-                }
-                Command::StartShaping(_, expr) => {
-                    pad(&mut sink, indent*2)?;
-                    writeln!(sink, "{} {{", expr)?;
-                    indent += 1
-                }
-                Command::ApplyRule {strategy_name, applied_rule, ..} => {
-                    pad(&mut sink, indent*2)?;
-                    match applied_rule {
-                        AppliedRule::ByName{name, reversed, ..} => if *reversed {
-                            writeln!(sink, "{} |! {}", name, strategy_name)?
-                        } else {
-                            writeln!(sink, "{} | {}", name, strategy_name)?
-                        },
-                        AppliedRule::Anonymous{head, body, ..} => {
-                            writeln!(sink, "{} = {} | {}", head, body, strategy_name)?
-                        },
+        for (name, (rule, history)) in self.rules.iter() {
+            match rule {
+                Rule::User{head, body, ..} => {
+                    write!(sink, "{name} :: {head}")?;
+                    if history.len() > 0 {
+                        writeln!(sink, " {{")?;
+                        for (_, command) in history {
+                            match command {
+                                Command::ApplyRule{strategy_name, applied_rule, ..} => {
+                                    match applied_rule {
+                                        AppliedRule::ByName {name, reversed, ..} => {
+                                            write!(sink, "    {name} |")?;
+                                            if *reversed {
+                                                write!(sink, "!")?;
+                                            }
+                                            writeln!(sink, " {strategy_name}")?;
+                                        }
+                                        AppliedRule::Anonymous{head, body, ..} => {
+                                            writeln!(sink, "    {head} = {body} | {strategy_name}")?;
+                                        }
+                                    }
+                                }
+                                _ => unreachable!()
+                            }
+                        }
+                        writeln!(sink, "}}")?;
+                    } else {
+                        writeln!(sink, " = {body}")?;
                     }
                 }
-                Command::FinishShaping(_) => {
-                    indent -= 1;
-                    pad(&mut sink, indent*2)?;
-                    writeln!(sink, "}}")?
-                }
-                Command::UndoRule(_) => {
-                    pad(&mut sink, indent*2)?;
-                    writeln!(sink, "undo")?
-                }
-                Command::Quit => {
-                    pad(&mut sink, indent*2)?;
-                    writeln!(sink, "quit")?
-                }
-                Command::List => {
-                    pad(&mut sink, indent*2)?;
-                    writeln!(sink, "list")?
-                }
-                Command::DeleteRule(_, name) => {
-                    pad(&mut sink, indent*2)?;
-                    writeln!(sink, "delete {}", name)?
-                }
-                Command::Load(_, name) => {
-                    pad(&mut sink, indent*2)?;
-                    writeln!(sink, "load \"{}\"", name)?
-                }
-                Command::Save(_, name) => {
-                    pad(&mut sink, indent*2)?;
-                    writeln!(sink, "save \"{}\"", name)?
-                }
+                Rule::Replace => {}
             }
         }
         Ok(())
@@ -465,7 +436,7 @@ impl Context {
                 self.interactive = saved_interactive;
             }
             Command::DefineRule(rule_loc, rule_name, rule) => {
-                if let Some(existing_rule) = get_item_by_key(&self.rules, &rule_name) {
+                if let Some((existing_rule, _)) = get_item_by_key(&self.rules, &rule_name) {
                     let loc = match existing_rule {
                         Rule::User{loc, ..} => Some(loc),
                         Rule::Replace => None,
@@ -477,7 +448,7 @@ impl Context {
                     return None
                 }
                 diag.report(&rule_loc, Severity::Info, &format!("defined rule `{}`", &rule_name));
-                self.rules.push((rule_name, rule));
+                self.rules.push((rule_name, (rule, vec![])));
             }
             Command::DefineRuleViaShaping{name, expr, ..} => {
                 println!(" => {}", &expr);
@@ -489,9 +460,9 @@ impl Context {
             },
             Command::ApplyRule {loc, strategy_name, applied_rule} => {
                 if let Some(frame) = self.shaping_stack.last_mut() {
-                    let rule =  match applied_rule {
+                    let rule = match applied_rule {
                         AppliedRule::ByName {loc, name, reversed} => match get_item_by_key(&self.rules, &name) {
-                            Some(rule) => if reversed {
+                            Some((rule, _)) => if reversed {
                                 match rule.clone() {
                                     Rule::User {loc, head, body} => Rule::User{loc, head: body, body: head},
                                     Rule::Replace => {
@@ -520,7 +491,7 @@ impl Context {
                     };
                     println!(" => {}", &frame.expr);
                     if self.interactive {
-                        frame.history.push(frame.expr.clone());
+                        frame.history.push((frame.expr.clone(), command));
                     }
                 } else {
                     diag.report(&loc, Severity::Error, &format!("To apply a rule to an expression you need to first start shaping the expression, but no shaping is currently in place"));
@@ -532,7 +503,7 @@ impl Context {
                 if let Some(mut frame) = self.shaping_stack.pop() {
                     let body = frame.expr;
                     if let Some((name, head)) = frame.rule_via_shaping.take() {
-                        if let Some(existing_rule) = get_item_by_key(&self.rules, &name) {
+                        if let Some((existing_rule, _)) = get_item_by_key(&self.rules, &name) {
                             let old_loc = match existing_rule {
                                 Rule::User{loc, ..} => Some(loc.clone()),
                                 Rule::Replace => None,
@@ -543,7 +514,7 @@ impl Context {
                             }
                         }
                         diag.report(&loc, Severity::Info, &format!("defined rule `{}`", &name));
-                        self.rules.push((name, Rule::User {loc, head, body}));
+                        self.rules.push((name, (Rule::User {loc, head, body}, frame.history)));
                     }
                 } else {
                     diag.report(&loc, Severity::Error, "no shaping in place");
@@ -552,7 +523,7 @@ impl Context {
             }
             Command::UndoRule(loc) => {
                 if let Some(frame) = self.shaping_stack.last_mut() {
-                    if let Some(previous_expr) = frame.history.pop() {
+                    if let Some((previous_expr, _)) = frame.history.pop() {
                         println!(" => {}", &previous_expr);
                         frame.expr = previous_expr;
                     } else {
@@ -569,8 +540,47 @@ impl Context {
             }
             Command::List => {
                 for (name, rule) in self.rules.iter() {
-                    if let Rule::User{loc: _, head, body} = rule {
+                    if let (Rule::User{loc: _, head, body}, _) = rule {
                         println!("{name} :: {head} = {body}")
+                    }
+                }
+            }
+            Command::Show{name} => {
+                match get_item_by_key(&self.rules, &name.text) {
+                    Some((Rule::User{head, body, ..}, history)) => {
+                        print!("{name} :: {head}", name = name.text);
+                        if history.len() > 0 {
+                            println!(" {{");
+                            for (_, command) in history {
+                                match command {
+                                    Command::ApplyRule{strategy_name, applied_rule, ..} => {
+                                        match applied_rule {
+                                            AppliedRule::ByName {name, reversed, ..} => {
+                                                print!("    {name} |");
+                                                if *reversed {
+                                                    print!("!");
+                                                }
+                                                println!(" {strategy_name}");
+                                            }
+                                            AppliedRule::Anonymous{head, body, ..} => {
+                                                println!("    {head} = {body} | {strategy_name}");
+                                            }
+                                        }
+                                    }
+                                    _ => unreachable!()
+                                }
+                            }
+                            println!("}}");
+                        } else {
+                            println!(" = {body}");
+                        }
+                    }
+                    Some((Rule::Replace, _)) => {
+                        println!("`replace` is a built-in rule");
+                    }
+                    None => {
+                        diag.report(&name.loc, Severity::Error, &format!("rule `{}` does not exist", name.text));
+                        return None
                     }
                 }
             }
@@ -588,9 +598,6 @@ impl Context {
                     return None
                 }
             }
-        }
-        if self.interactive {
-            self.history.push(command);
         }
         Some(())
     }

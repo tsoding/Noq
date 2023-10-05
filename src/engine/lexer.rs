@@ -35,6 +35,7 @@ pub enum TokenKind {
     Load,
     Save,
     List,
+    Show,
 
     // Special Characters
     OpenParen,
@@ -71,6 +72,7 @@ fn keyword_by_name(text: &str) -> Option<TokenKind> {
         "load"   => Some(TokenKind::Load),
         "save"   => Some(TokenKind::Save),
         "list"   => Some(TokenKind::List),
+        "show"   => Some(TokenKind::Show),
         _ => None,
     }
 }
@@ -84,6 +86,7 @@ impl fmt::Display for TokenKind {
             Undo => write!(f, "`undo`"),
             Quit => write!(f, "`quit`"),
             List => write!(f, "`list`"),
+            Show => write!(f, "`show`"),
             Delete => write!(f, "`delete`"),
             Load => write!(f, "`load`"),
             Save => write!(f, "`save`"),
