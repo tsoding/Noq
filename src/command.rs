@@ -291,9 +291,11 @@ impl Command {
                         let token = lexer.next_token();
                         diag.report(&token.loc, Severity::Error, "It's unclear what you want in here");
                         diag.report(&token.loc, Severity::Info, &format!("{expr} {{                     - to start shaping {expr}"));
-                        diag.report(&token.loc, Severity::Info, &format!("{expr} | <strategy>          - to apply rule {expr} to the currently shaping expression"));
                         diag.report(&token.loc, Severity::Info, &format!("{expr} = <body> | <strategy> - to use {expr} as a head of an anonymous rule to apply to the currently shaping expression"));
-                        diag.report(&token.loc, Severity::Info, &format!("{expr} :: <head> = <body>    - to define new rule with the name {expr}"));
+                        if let Expr::Sym(_) = expr {
+                            diag.report(&token.loc, Severity::Info, &format!("{expr} | <strategy>          - to apply rule {expr} to the currently shaping expression"));
+                            diag.report(&token.loc, Severity::Info, &format!("{expr} :: <head> = <body>    - to define new rule with the name {expr}"));
+                        }
                         None
                     }
                 }
