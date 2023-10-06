@@ -92,7 +92,9 @@ fn start_repl() {
         }
         print!("{}", prompt);
         stdout().flush().unwrap();
-        stdin().read_line(&mut command).unwrap();
+        if let 0 = stdin().read_line(&mut command).unwrap() {
+            return
+        }
         let mut lexer = Lexer::new(command.trim().chars().collect(), None);
         if lexer.peek_token().kind != TokenKind::End {
             // TODO: pointing the place of error with arrow is broken
