@@ -172,6 +172,3 @@ fn main() {
         }
     }
 }
-
-// TODO: Ask if "you really want to exit" on ^C when the history is not empty
-//   Because you may want to `save` your history.

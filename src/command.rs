@@ -616,3 +616,9 @@ impl Context {
         Some(())
     }
 }
+
+// TODO: `match` commands that shows all the matches for a pattern rule and enumerates them with indices that can be used as strategies
+// TODO: `continue` command that continues shaping a rule
+// TODO: ability to run external shell commands from REPL
+// TODO: ghci style REPL commands that start with `:`
+// TODO: Ask if "you really want to exit" on ^C when you have unsaved changes
