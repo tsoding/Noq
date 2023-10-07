@@ -340,22 +340,13 @@ pub struct Context {
 }
 
 fn get_item_by_key<'a, K, V>(assoc: &'a [(K, V)], needle: &'a K) -> Option<&'a V> where K: PartialEq<K> {
-    for (key, value) in assoc.iter() {
-        if key == needle {
-            return Some(value)
-        }
-    }
-    None
+    assoc.iter().find(|(key, _)| key == needle).map(|(_, value)| value)
 }
 
 fn delete_item_by_key<'a, K, V>(assoc: &'a mut Vec<(K, V)>, needle: &'a K) -> bool where K: PartialEq<K> {
-    for i in 0..assoc.len() {
-        if &assoc[i].0 == needle {
-            assoc.remove(i);
-            return true
-        }
-    }
-    false
+    assoc.iter().position(|(key, _)| key == needle).map(|index| {
+        assoc.remove(index)
+    }).is_some()
 }
 
 impl Context {
