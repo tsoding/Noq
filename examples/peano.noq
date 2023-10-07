@@ -3,9 +3,8 @@
 load "./std/std.noq"
 
 (2 + 3) {
-  3      | 0
+  3      | all
   2      | all
-  1      | all
   sum    | all
   sum    | all
   sum_id | all
@@ -14,8 +13,6 @@ load "./std/std.noq"
 (4 - 3) {
   4      | 0
   3      | all
-  2      | all
-  1      | all
   sub    | all
   sub    | all
   sub    | all

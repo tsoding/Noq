@@ -1,41 +1,180 @@
-// Common definitions
-
-1            :: 1 = s(0)
-2            :: 2 = s(1)
-3            :: 3 = s(2)
-4            :: 4 = s(3)
-
-sum_id       :: 0 + A = A
-sum_comm     :: A + B = B + A
-sum_assoc    :: (A + B) + C = A + (B + C)
-double_sum   :: A + A = 2*A
-sum          :: s(A) + B = s(A + B)
+ref :: A == A = true
+1 :: 1 = s(0)
+2 :: 2 = s(s(0))
+3 :: 3 = s(s(s(0)))
+4 :: 4 = s(s(s(s(0))))
+5 :: 5 = s(s(s(s(s(0)))))
+sum_id :: 0 + A = A
+sum :: s(A) + B = s(A + B)
+sum_test :: 3 + 2 {
+    2 | all
+    3 | all
+    sum | all
+    sum | all
+    sum | all
+    sum_id | all
+    5 |! all
+}
+sum_id_comm :: A + 0 = A
+sum_id_comm_base :: 0 + 0 == 0 {
+    sum_id | all
+    ref | all
+}
+sum_id_comm_ind :: s(A) + 0 == s(A) {
+    sum | all
+    sum_id_comm | all
+    ref | all
+}
+sum_lemma :: A + s(B) = s(A + B)
+sum_lemma_base :: 0 + s(B) == s(0 + B) {
+    sum_id | all
+    ref | all
+}
+sum_lemma_ind :: s(A) + s(B) == s(s(A) + B) {
+    sum | all
+    sum_lemma | 0
+    ref | all
+}
+sum_comm :: A + B = B + A
+sum_comm_base :: 0 + B == B + 0 {
+    sum_id | all
+    sum_id_comm | all
+    ref | all
+}
+sum_comm_ind :: s(A) + B == B + s(A) {
+    sum | all
+    sum_lemma | all
+    sum_comm | 0
+    ref | all
+}
+sum_assoc :: (A + B) + C = A + (B + C)
+sum_assoc_base :: (0 + B) + C == 0 + (B + C) {
+    sum_id | all
+    ref | all
+}
+sum_assoc_ind :: (s(A) + B) + C == s(A) + (B + C) {
+    sum | all
+    sum | all
+    sum_assoc | all
+    ref | all
+}
+mul_zero :: 0*A = 0
+mul :: s(A)*B = B + A*B
+mul_id :: 1*A {
+    1 | all
+    mul | all
+    mul_zero | all
+    sum_id_comm | all
+}
+mul_zero_comm :: A*0 = 0
+mul_zero_comm_base :: 0*0 == 0 {
+    mul_zero | all
+    ref | all
+}
+mul_zero_comm_ind :: s(A)*0 == 0 {
+    mul | all
+    mul_zero_comm | all
+    sum_id | all
+    ref | all
+}
+mul_lemma :: A*s(B) = A + A*B
+mul_lemma_base :: 0*s(B) == 0 + 0*B {
+    mul_zero | all
+    sum_id | all
+    ref | all
+}
+mul_lemma_ind :: s(A)*s(B) == s(A) + s(A)*B {
+    mul | all
+    mul_lemma | 0
+    sum | all
+    sum_assoc |! 0
+    sum_comm | 1
+    sum_assoc | 0
+    ref | all
+}
+mul_comm :: A*B = B*A
+mul_comm_base :: 0*B == B*0 {
+    mul_zero | all
+    mul_zero_comm | all
+    ref | all
+}
+mul_comm_ind :: s(A)*B == B*s(A) {
+    mul | all
+    mul_lemma | all
+    mul_comm | 0
+    ref | all
+}
+mul_sum_dist :: A*(B + C) = A*B + A*C
+mul_sum_dist_base :: 0*(B + C) == 0*B + 0*C {
+    mul_zero | all
+    sum_id | all
+    ref | all
+}
+mul_sum_dist_ind :: s(A)*(B + C) == s(A)*B + s(A)*C {
+    mul | all
+    mul_sum_dist | all
+    sum_assoc | 0
+    sum_assoc |! 1
+    sum_comm | 2
+    sum_assoc | 0
+    sum_assoc |! 0
+    ref | all
+}
+mul_assoc :: A*(B*C) = (A*B)*C
+mul_assoc_base :: 0*(B*C) == (0*B)*C {
+    mul_zero | all
+    mul_zero | all
+    ref | all
+}
+mul_assoc_ind :: s(A)*(B*C) == (s(A)*B)*C {
+    mul | all
+    mul_comm | 3
+    mul_sum_dist | 0
+    mul_comm | 4
+    mul_assoc | 0
+    mul_comm | 0
+    ref | all
+}
+pow :: A^s(B) = A*A^B
+pow_zero :: A^0 = 1
+square :: A^2 {
+    2 | all
+    pow | all
+    pow | all
+    pow_zero | all
+    mul_comm | 1
+    mul_id | 0
+}
+double :: 2*A {
+    2 | all
+    mul | all
+    mul | all
+    mul_zero | all
+    sum_comm | 1
+    sum_id | all
+}
+square_of_sum :: (A + B)^2 {
+    square | all
+    mul_sum_dist | all
+    mul_comm | all
+    mul_sum_dist | all
+    square |! all
+    mul_comm | 1
+    sum_assoc | 0
+    sum_assoc |! 1
+    double |! all
+}
 
 sub_id       :: A - 0 = A
 sub          :: s(A) - s(B) = A - B
+
+// TODO: diff_id may require a proof
 diff_id      :: A - A = 0
 
-square       :: A^2 = A*A
-mul_sum_dist :: A*(B + C) = A*B + A*C
-mul_comm     :: A*B = B*A
-mul_assoc    :: A*(B*C) = (A*B)*C
-
+// TODO: div_sub_dist may require a proof
 div_sub_dist :: (A - B)/C = A/C - B/C
+// TODO: div_sum_dist may require a proof
 div_sum_dist :: (A + B)/C = A/C + B/C
-
-pow :: A^s(B) = A*A^B
-
-square_of_sum :: (A + B)^2 {
-  square       |  all
-  mul_sum_dist |  all
-  mul_comm     |  all
-  mul_sum_dist |  all
-  sum_assoc    |  0
-  sum_assoc    |! 1
-  mul_comm     |  2
-  double_sum   |  0
-  square       |! all
-}
 
 lim_def      :: lim(Var, Value, Expr)  = apply_rule(0, Var, Value, Expr)
 lim_sum_dist :: lim(Var, Value, A + B) = lim(Var, Value, A) + lim(Var, Value, B)
