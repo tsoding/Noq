@@ -616,6 +616,3 @@ impl Context {
         Some(())
     }
 }
-
-// TODO: `undo` command should remove previous command from the history
-// TODO: Ability to restore saved session
