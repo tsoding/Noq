@@ -328,13 +328,18 @@ impl ShapingFrame {
     }
 }
 
+struct RuleDefinition {
+    rule: Rule,
+    history: Vec<(Expr, Command)>,
+}
+
 pub struct Context {
     interactive: bool,
     // NOTE: We don't use HashMap in here to preserve the order of the definition of the `list` command.
     // The order of the definition is very important for UX in REPL.
     // TODO: Do something about the performance when it actually starts to matter.
     // I don't think we work with too many definitions right now.
-    rules: Vec<(String, (Rule, Vec<(Expr, Command)>))>,
+    rules: Vec<(String, RuleDefinition)>,
     pub shaping_stack: Vec<ShapingFrame>,
     pub quit: bool,
 }
@@ -353,7 +358,10 @@ impl Context {
     pub fn new(interactive: bool) -> Self {
         let mut rules = Vec::new();
         // TODO: you can potentially `delete` the replace rule (you should not be able to do that)
-        rules.push(("replace".to_string(), (Rule::Replace, vec![])));
+        rules.push(("replace".to_string(), RuleDefinition {
+            rule: Rule::Replace,
+            history: vec![]
+        }));
         Self {
             interactive,
             rules,
@@ -364,7 +372,7 @@ impl Context {
 
     fn save_history(&self, file_path: &str) -> Result<(), io::Error> {
         let mut sink = fs::File::create(file_path)?;
-        for (name, (rule, history)) in self.rules.iter() {
+        for (name, RuleDefinition{rule, history}) in self.rules.iter() {
             match rule {
                 Rule::User{head, body, ..} => {
                     write!(sink, "{name} :: {head}")?;
@@ -424,7 +432,7 @@ impl Context {
                 self.interactive = saved_interactive;
             }
             Command::DefineRule{ name, rule } => {
-                if let Some((existing_rule, _)) = get_item_by_key(&self.rules, &name.text) {
+                if let Some(RuleDefinition{rule: existing_rule, ..}) = get_item_by_key(&self.rules, &name.text) {
                     let loc = match existing_rule {
                         Rule::User{loc, ..} => Some(loc),
                         Rule::Replace => None,
@@ -436,7 +444,7 @@ impl Context {
                     return None
                 }
                 diag.report(&name.loc, Severity::Info, &format!("defined rule `{}`", &name.text));
-                self.rules.push((name.text, (rule, vec![])));
+                self.rules.push((name.text, RuleDefinition{rule, history: vec![]}));
             }
             Command::DefineRuleViaShaping{name, expr, ..} => {
                 println!(" => {}", &expr);
@@ -450,7 +458,7 @@ impl Context {
                 if let Some(frame) = self.shaping_stack.last_mut() {
                     let rule = match applied_rule {
                         AppliedRule::ByName { name, reversed } => match get_item_by_key(&self.rules, &name.text) {
-                            Some((rule, _)) => if reversed {
+                            Some(RuleDefinition{rule, ..}) => if reversed {
                                 match rule.clone() {
                                     Rule::User {loc, head, body} => Rule::User{loc, head: body, body: head},
                                     Rule::Replace => {
@@ -490,7 +498,7 @@ impl Context {
                 if let Some(mut frame) = self.shaping_stack.pop() {
                     let body = frame.expr;
                     if let Some((name, head)) = frame.rule_via_shaping.take() {
-                        if let Some((existing_rule, _)) = get_item_by_key(&self.rules, &name) {
+                        if let Some(RuleDefinition{rule: existing_rule, ..}) = get_item_by_key(&self.rules, &name) {
                             let old_loc = match existing_rule {
                                 Rule::User{loc, ..} => Some(loc.clone()),
                                 Rule::Replace => None,
@@ -502,7 +510,10 @@ impl Context {
                             return None
                         }
                         diag.report(&token.loc, Severity::Info, &format!("defined rule `{}`", &name));
-                        self.rules.push((name, (Rule::User {loc: token.loc, head, body}, frame.history)));
+                        self.rules.push((name, RuleDefinition{
+                            rule: Rule::User {loc: token.loc, head, body},
+                            history: frame.history
+                        }));
                     }
                 } else {
                     diag.report(&token.loc, Severity::Error, "no shaping in place");
@@ -528,7 +539,7 @@ impl Context {
             }
             Command::List => {
                 for (name, rule) in self.rules.iter() {
-                    if let (Rule::User{loc: _, head, body}, _) = rule {
+                    if let RuleDefinition{rule: Rule::User{loc: _, head, body}, ..} = rule {
                         println!("{name} :: {head} = {body}")
                     }
                 }
@@ -561,7 +572,7 @@ impl Context {
             }
             Command::Show{name} => {
                 match get_item_by_key(&self.rules, &name.text) {
-                    Some((Rule::User{head, body, ..}, history)) => {
+                    Some(RuleDefinition{rule: Rule::User{head, body, ..}, history}) => {
                         print!("{name} :: {head}", name = name.text);
                         if history.len() > 0 {
                             println!(" {{");
@@ -589,7 +600,7 @@ impl Context {
                             println!(" = {body}");
                         }
                     }
-                    Some((Rule::Replace, _)) => {
+                    Some(RuleDefinition{rule: Rule::Replace, ..}) => {
                         println!("`replace` is a built-in rule");
                     }
                     None => {
