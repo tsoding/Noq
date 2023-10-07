@@ -43,7 +43,7 @@ pub enum Command {
     ///   ...
     /// }
     /// ```
-    DefineRuleViaShaping { name: String, expr: Expr },
+    DefineRuleViaShaping { name: Token, expr: Expr },
     /// Starting shaping
     ///
     /// Example:
@@ -258,7 +258,7 @@ impl Command {
                                     TokenKind::OpenCurly =>  {
                                         lexer.next_token();
                                         Some(Command::DefineRuleViaShaping {
-                                            name: name.text,
+                                            name,
                                             expr: head
                                         })
                                     }
@@ -307,7 +307,7 @@ impl Command {
 pub struct ShapingFrame {
     pub expr: Expr,
     history: Vec<(Expr, Command)>,
-    rule_via_shaping: Option<(String, Expr)>,
+    rule_via_shaping: Option<(Token, Expr)>,
 }
 
 impl ShapingFrame {
@@ -319,7 +319,7 @@ impl ShapingFrame {
         }
     }
 
-    fn new_rule_via_shaping(name: String, head: Expr) -> Self {
+    fn new_rule_via_shaping(name: Token, head: Expr) -> Self {
         Self {
             expr: head.clone(),
             history: Vec::new(),
@@ -443,7 +443,11 @@ impl Context {
                     }
                     return None
                 }
-                diag.report(&name.loc, Severity::Info, &format!("defined rule `{}`", &name.text));
+                if let Rule::User{head, body, ..} = &rule {
+                    diag.report(&name.loc, Severity::Info, &format!("defined rule {} :: {head} = {body}", &name.text));
+                } else {
+                    unreachable!("Users can only define Rule::User rules");
+                }
                 self.rules.push((name.text, RuleDefinition{rule, history: vec![]}));
             }
             Command::DefineRuleViaShaping{name, expr, ..} => {
@@ -498,20 +502,20 @@ impl Context {
                 if let Some(mut frame) = self.shaping_stack.pop() {
                     let body = frame.expr;
                     if let Some((name, head)) = frame.rule_via_shaping.take() {
-                        if let Some(RuleDefinition{rule: existing_rule, ..}) = get_item_by_key(&self.rules, &name) {
+                        if let Some(RuleDefinition{rule: existing_rule, ..}) = get_item_by_key(&self.rules, &name.text) {
                             let old_loc = match existing_rule {
                                 Rule::User{loc, ..} => Some(loc.clone()),
                                 Rule::Replace => None,
                             };
-                            diag.report(&token.loc, Severity::Error, &format!("redefinition of existing rule {}", name));
+                            diag.report(&token.loc, Severity::Error, &format!("redefinition of existing rule {}", &name.text));
                             if let Some(old_loc) = old_loc {
                                 diag.report(&old_loc, Severity::Info, &format!("the original definition is located here"));
                             }
                             return None
                         }
-                        diag.report(&token.loc, Severity::Info, &format!("defined rule `{}`", &name));
-                        self.rules.push((name, RuleDefinition{
-                            rule: Rule::User {loc: token.loc, head, body},
+                        diag.report(&name.loc, Severity::Info, &format!("defined rule {} :: {head} = {body}", &name.text));
+                        self.rules.push((name.text, RuleDefinition{
+                            rule: Rule::User {loc: name.loc, head, body},
                             history: frame.history
                         }));
                     }
