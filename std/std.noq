@@ -168,8 +168,17 @@ square_of_sum :: (A + B)^2 {
 sub_id       :: A - 0 = A
 sub          :: s(A) - s(B) = A - B
 
-// TODO: diff_id may require a proof
 diff_id      :: A - A = 0
+diff_id_base :: 0 - 0 == 0 {
+    sub_id | all
+    ref | all
+}
+diff_id_hyp :: a - a = 0
+diff_id_ind :: s(a) - s(a) == 0 {
+    sub | all
+    diff_id_hyp | all
+    ref | all
+}
 
 // TODO: div_sub_dist may require a proof
 div_sub_dist :: (A - B)/C = A/C - B/C
