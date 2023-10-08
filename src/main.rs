@@ -98,7 +98,6 @@ fn start_repl() {
         }
         let mut lexer = Lexer::new(command.trim().chars().collect(), None);
         if lexer.peek_token().kind != TokenKind::End {
-            // TODO: pointing the place of error with arrow is broken
             repl_parse_and_process_command(&mut context, &mut lexer, &mut diag);
         } else if let Some(frame) = context.shaping_stack.last() {
             println!(" => {}", frame.expr);
