@@ -179,7 +179,7 @@ impl Lexer {
         while eol < self.chars.len() && self.chars[eol] != '\n' {
             eol += 1;
         }
-        return self.chars[self.bol..eol].to_vec();
+        self.chars[self.bol..eol].to_vec()
     }
 
     pub fn loc(&self) -> Loc {
@@ -282,7 +282,7 @@ impl Lexer {
                         '+' => Token {kind: TokenKind::Plus,       text, loc},
                         '-' => Token {kind: TokenKind::Dash,       text, loc},
                         '*' => Token {kind: TokenKind::Asterisk,   text, loc},
-                        '/' => if let Some(_) = self.drop_char_if(|x| x == '/') {
+                        '/' => if self.drop_char_if(|x| x == '/').is_some() {
                             self.drop_line();
                             continue 'again;
                         } else {

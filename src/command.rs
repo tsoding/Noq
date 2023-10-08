@@ -205,7 +205,7 @@ impl Command {
                             })
                         } else {
                             diag.report(&keyword_loc, Severity::Error, &format!("Applied rule must be a symbol but got {} instead", expr.human_name()));
-                            return None
+                            None
                         }
                     }
                     TokenKind::Equals => {
@@ -278,7 +278,7 @@ impl Command {
                                 }
                             }
                             _ => {
-                                diag.report(&keyword.loc, Severity::Error, &format!("expected symbol"));
+                                diag.report(&keyword.loc, Severity::Error, "expected symbol");
                                 None
                             }
                         }
@@ -352,9 +352,8 @@ fn delete_item_by_key<'a, K, V>(assoc: &'a mut Vec<(K, V)>, needle: &'a K) -> bo
 
 impl Context {
     pub fn new(interactive: bool) -> Self {
-        let mut rules = Vec::new();
         // TODO: you can potentially `delete` the replace rule (you should not be able to do that)
-        rules.push((
+        let rules = vec![(
             Token {
                 kind: TokenKind::Ident,
                 text: "replace".to_string(),
@@ -364,7 +363,7 @@ impl Context {
                 rule: Rule::Replace,
                 history: vec![]
             }
-        ));
+        )];
         Self {
             interactive,
             rules,
@@ -379,7 +378,7 @@ impl Context {
             match rule {
                 Rule::User{head, body, ..} => {
                     write!(sink, "{name} :: {head}", name = name.text)?;
-                    if history.len() > 0 {
+                    if !history.is_empty() {
                         writeln!(sink, " {{")?;
                         for (_, command) in history {
                             match command {
@@ -437,7 +436,7 @@ impl Context {
             Command::DefineRule{ name, rule } => {
                 if let Some((existing_name, _)) = get_item_by_key(&self.rules, &name) {
                     diag.report(&name.loc, Severity::Error, &format!("redefinition of existing rule {}", name.text));
-                    diag.report(&existing_name.loc, Severity::Info, &format!("the original definition is located here"));
+                    diag.report(&existing_name.loc, Severity::Info, "the original definition is located here");
                     return None
                 }
                 if let Rule::User{head, body, ..} = &rule {
@@ -463,7 +462,7 @@ impl Context {
                                 match rule.clone() {
                                     Rule::User {head, body} => Rule::User{head: body, body: head},
                                     Rule::Replace => {
-                                        diag.report(&bar.loc, Severity::Error, &format!("irreversible rule"));
+                                        diag.report(&bar.loc, Severity::Error, "irreversible rule");
                                         return None;
                                     }
                                 }
@@ -490,8 +489,8 @@ impl Context {
                     println!(" => {}", &frame.expr);
                     frame.history.push((previous_expr, command));
                 } else {
-                    diag.report(&bar.loc, Severity::Error, &format!("To apply a rule to an expression you need to first start shaping the expression, but no shaping is currently in place"));
-                    diag.report(&bar.loc, Severity::Info, &format!("<expression> {{    - to start shaping"));
+                    diag.report(&bar.loc, Severity::Error, "To apply a rule to an expression you need to first start shaping the expression, but no shaping is currently in place");
+                    diag.report(&bar.loc, Severity::Info, "<expression> {    - to start shaping");
                     return None
                 }
             }
@@ -501,7 +500,7 @@ impl Context {
                     if let Some((name, head)) = frame.rule_via_shaping.take() {
                         if let Some((existing_name, _)) = get_item_by_key(&self.rules, &name) {
                             diag.report(&token.loc, Severity::Error, &format!("redefinition of existing rule {}", &name.text));
-                            diag.report(&existing_name.loc, Severity::Info, &format!("the original definition is located here"));
+                            diag.report(&existing_name.loc, Severity::Info, "the original definition is located here");
                             return None
                         }
                         diag.report(&name.loc, Severity::Info, &format!("defined rule {} :: {head} = {body}", &name.text));
@@ -569,7 +568,7 @@ impl Context {
                 match get_item_by_key(&self.rules, &name) {
                     Some((_, RuleDefinition{rule: Rule::User{head, body}, history})) => {
                         print!("{name} :: {head}", name = name.text);
-                        if history.len() > 0 {
+                        if !history.is_empty() {
                             println!(" {{");
                             for (_, command) in history {
                                 match command {
