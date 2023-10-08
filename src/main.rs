@@ -3,6 +3,7 @@ use std::io::Write;
 use std::env;
 use std::fs;
 
+#[macro_use]
 mod engine;
 mod new_repl;
 mod command;

@@ -19,7 +19,6 @@ pub enum AppliedRule {
     },
     Anonymous {
         head: Expr,
-        equals: Token,
         body: Expr,
     },
 }
@@ -98,7 +97,7 @@ pub enum Command {
     /// sum_comm :: A + B = B + A
     /// delete sum_comm # <- the delete command
     /// ```
-    DeleteRule(Loc, String),
+    DeleteRule(Loc, Token),
     /// Load file
     ///
     /// ```noq
@@ -174,7 +173,7 @@ impl Command {
                 let keyword = lexer.next_token();
                 let name = lexer.expect_token(TokenKind::Ident).map_err(|(expected_kind, actual_token)| {
                     diag.report(&actual_token.loc, Severity::Error, &format!("`delete` command expects {expected_kind} as an argument but got {actual_token} instead", actual_token = actual_token.report()));
-                }).ok()?.text;
+                }).ok()?;
                 Some(Command::DeleteRule(keyword.loc, name))
             }
             _ => {
@@ -211,7 +210,7 @@ impl Command {
                     }
                     TokenKind::Equals => {
                         let head = expr;
-                        let equals = lexer.next_token();
+                        let _equals = lexer.next_token();
                         let body = Expr::parse(lexer, diag)?;
                         let bar = lexer.expect_token(TokenKind::Bar).map_err(|(expected_kind, actual_token)| {
                             diag.report(&actual_token.loc, Severity::Error, &format!("Expected {expected_kind} since you defined an annonymous rule `{head} = {body}`, which must be applied in-place. But instead of {expected_kind} we got {actual_token}", actual_token = actual_token.report()))
@@ -233,13 +232,11 @@ impl Command {
                             applied_rule: if reversed {
                                 AppliedRule::Anonymous {
                                     head: body,
-                                    equals,
                                     body: head,
                                 }
                             } else {
                                 AppliedRule::Anonymous {
                                     head,
-                                    equals,
                                     body,
                                 }
                             }
@@ -268,7 +265,6 @@ impl Command {
                                         Some(Command::DefineRule {
                                             name,
                                             rule: Rule::User {
-                                                loc: keyword.loc,
                                                 head,
                                                 body,
                                             }
@@ -339,13 +335,13 @@ pub struct Context {
     // The order of the definition is very important for UX in REPL.
     // TODO: Do something about the performance when it actually starts to matter.
     // I don't think we work with too many definitions right now.
-    rules: Vec<(String, RuleDefinition)>,
+    rules: Vec<(Token, RuleDefinition)>,
     pub shaping_stack: Vec<ShapingFrame>,
     pub quit: bool,
 }
 
-fn get_item_by_key<'a, K, V>(assoc: &'a [(K, V)], needle: &'a K) -> Option<&'a V> where K: PartialEq<K> {
-    assoc.iter().find(|(key, _)| key == needle).map(|(_, value)| value)
+fn get_item_by_key<'a, K, V>(assoc: &'a [(K, V)], needle: &'a K) -> Option<&'a (K, V)> where K: PartialEq<K> {
+    assoc.iter().find(|(key, _)| key == needle)
 }
 
 fn delete_item_by_key<'a, K, V>(assoc: &'a mut Vec<(K, V)>, needle: &'a K) -> bool where K: PartialEq<K> {
@@ -358,10 +354,17 @@ impl Context {
     pub fn new(interactive: bool) -> Self {
         let mut rules = Vec::new();
         // TODO: you can potentially `delete` the replace rule (you should not be able to do that)
-        rules.push(("replace".to_string(), RuleDefinition {
-            rule: Rule::Replace,
-            history: vec![]
-        }));
+        rules.push((
+            Token {
+                kind: TokenKind::Ident,
+                text: "replace".to_string(),
+                loc: loc_here!(),
+            },
+            RuleDefinition {
+                rule: Rule::Replace,
+                history: vec![]
+            }
+        ));
         Self {
             interactive,
             rules,
@@ -375,7 +378,7 @@ impl Context {
         for (name, RuleDefinition{rule, history}) in self.rules.iter() {
             match rule {
                 Rule::User{head, body, ..} => {
-                    write!(sink, "{name} :: {head}")?;
+                    write!(sink, "{name} :: {head}", name = name.text)?;
                     if history.len() > 0 {
                         writeln!(sink, " {{")?;
                         for (_, command) in history {
@@ -432,25 +435,19 @@ impl Context {
                 self.interactive = saved_interactive;
             }
             Command::DefineRule{ name, rule } => {
-                if let Some(RuleDefinition{rule: existing_rule, ..}) = get_item_by_key(&self.rules, &name.text) {
-                    let loc = match existing_rule {
-                        Rule::User{loc, ..} => Some(loc),
-                        Rule::Replace => None,
-                    };
+                if let Some((existing_name, _)) = get_item_by_key(&self.rules, &name) {
                     diag.report(&name.loc, Severity::Error, &format!("redefinition of existing rule {}", name.text));
-                    if let Some(loc) = loc {
-                        diag.report(&loc, Severity::Info, &format!("the original definition is located here"));
-                    }
+                    diag.report(&existing_name.loc, Severity::Info, &format!("the original definition is located here"));
                     return None
                 }
                 if let Rule::User{head, body, ..} = &rule {
-                    diag.report(&name.loc, Severity::Info, &format!("defined rule {} :: {head} = {body}", &name.text));
+                    diag.report(&name.loc, Severity::Info, &format!("defined rule {name} :: {head} = {body}", name = &name.text));
                 } else {
                     unreachable!("Users can only define Rule::User rules");
                 }
-                self.rules.push((name.text, RuleDefinition{rule, history: vec![]}));
+                self.rules.push((name, RuleDefinition{rule, history: vec![]}));
             }
-            Command::DefineRuleViaShaping{name, expr, ..} => {
+            Command::DefineRuleViaShaping{name, expr} => {
                 println!(" => {}", &expr);
                 self.shaping_stack.push(ShapingFrame::new_rule_via_shaping(name, expr))
             },
@@ -461,10 +458,10 @@ impl Context {
             Command::ApplyRule {bar, strategy_name, applied_rule} => {
                 if let Some(frame) = self.shaping_stack.last_mut() {
                     let rule = match applied_rule {
-                        AppliedRule::ByName { name, reversed } => match get_item_by_key(&self.rules, &name.text) {
-                            Some(RuleDefinition{rule, ..}) => if reversed {
+                        AppliedRule::ByName { name, reversed } => match get_item_by_key(&self.rules, &name) {
+                            Some((_, RuleDefinition{rule, ..})) => if reversed {
                                 match rule.clone() {
-                                    Rule::User {loc, head, body} => Rule::User{loc, head: body, body: head},
+                                    Rule::User {head, body} => Rule::User{head: body, body: head},
                                     Rule::Replace => {
                                         diag.report(&bar.loc, Severity::Error, &format!("irreversible rule"));
                                         return None;
@@ -479,7 +476,7 @@ impl Context {
                                 return None;
                             }
                         }
-                        AppliedRule::Anonymous {head, equals, body} => Rule::User {loc: equals.loc, head, body},
+                        AppliedRule::Anonymous {head, body} => Rule::User {head, body},
                     };
 
                     let previous_expr = frame.expr.clone();
@@ -502,20 +499,14 @@ impl Context {
                 if let Some(mut frame) = self.shaping_stack.pop() {
                     let body = frame.expr;
                     if let Some((name, head)) = frame.rule_via_shaping.take() {
-                        if let Some(RuleDefinition{rule: existing_rule, ..}) = get_item_by_key(&self.rules, &name.text) {
-                            let old_loc = match existing_rule {
-                                Rule::User{loc, ..} => Some(loc.clone()),
-                                Rule::Replace => None,
-                            };
+                        if let Some((existing_name, _)) = get_item_by_key(&self.rules, &name) {
                             diag.report(&token.loc, Severity::Error, &format!("redefinition of existing rule {}", &name.text));
-                            if let Some(old_loc) = old_loc {
-                                diag.report(&old_loc, Severity::Info, &format!("the original definition is located here"));
-                            }
+                            diag.report(&existing_name.loc, Severity::Info, &format!("the original definition is located here"));
                             return None
                         }
                         diag.report(&name.loc, Severity::Info, &format!("defined rule {} :: {head} = {body}", &name.text));
-                        self.rules.push((name.text, RuleDefinition{
-                            rule: Rule::User {loc: name.loc, head, body},
+                        self.rules.push((name, RuleDefinition{
+                            rule: Rule::User {head, body},
                             history: frame.history
                         }));
                     }
@@ -543,8 +534,8 @@ impl Context {
             }
             Command::List => {
                 for (name, rule) in self.rules.iter() {
-                    if let RuleDefinition{rule: Rule::User{loc: _, head, body}, ..} = rule {
-                        println!("{name} :: {head} = {body}")
+                    if let RuleDefinition{rule: Rule::User{head, body}, ..} = rule {
+                        println!("{name} :: {head} = {body}", name = name.text)
                     }
                 }
             }
@@ -575,8 +566,8 @@ impl Context {
                 }
             }
             Command::Show{name} => {
-                match get_item_by_key(&self.rules, &name.text) {
-                    Some(RuleDefinition{rule: Rule::User{head, body, ..}, history}) => {
+                match get_item_by_key(&self.rules, &name) {
+                    Some((_, RuleDefinition{rule: Rule::User{head, body}, history})) => {
                         print!("{name} :: {head}", name = name.text);
                         if history.len() > 0 {
                             println!(" {{");
@@ -604,7 +595,7 @@ impl Context {
                             println!(" = {body}");
                         }
                     }
-                    Some(RuleDefinition{rule: Rule::Replace, ..}) => {
+                    Some((_, RuleDefinition{rule: Rule::Replace, ..})) => {
                         println!("`replace` is a built-in rule");
                     }
                     None => {
@@ -615,9 +606,9 @@ impl Context {
             }
             Command::DeleteRule(loc, name) => {
                 if delete_item_by_key(&mut self.rules, &name) {
-                    diag.report(&loc, Severity::Info, &format!("rule `{}` has been removed", name));
+                    diag.report(&loc, Severity::Info, &format!("rule `{}` has been removed", name.text));
                 } else {
-                    diag.report(&loc, Severity::Error, &format!("rule `{}` does not exist", name));
+                    diag.report(&loc, Severity::Error, &format!("rule `{}` does not exist", name.text));
                     return None
                 }
             }

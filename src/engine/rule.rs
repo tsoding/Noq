@@ -24,7 +24,6 @@ struct Resolution {
 #[derive(Debug, Clone)]
 pub enum Rule {
     User {
-        loc: Loc,
         head: Expr,
         body: Expr,
     },
@@ -107,7 +106,7 @@ impl Rule {
 
         fn apply_impl(rule: &Rule, expr: &mut Expr, strategy: &Strategy, apply_command_loc: &Loc, match_count: &mut usize, diag: &mut impl Diagnoster) -> Option<bool> {
             match rule {
-                Rule::User{loc: _, head, body} => {
+                Rule::User{head, body} => {
                     if let Some(bindings) = head.pattern_match(expr) {
                         let resolution = strategy.matched(*match_count);
                         *match_count += 1;
@@ -132,7 +131,6 @@ impl Rule {
                     if let Some(bindings) = expr!(apply_rule(Strategy, Head, Body, Expr)).pattern_match(expr) {
                         *match_count += 1;
                         let meta_rule = Rule::User {
-                            loc: loc_here!(),
                             head: bindings.get("Head").expect("Variable `Head` is present in the meta pattern").clone(),
                             body: bindings.get("Body").expect("Variable `Body` is present in the meta pattern").clone(),
                         };
