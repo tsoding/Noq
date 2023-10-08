@@ -628,3 +628,5 @@ impl Context {
 // TODO: ability to run external shell commands from REPL
 // TODO: ghci style REPL commands that start with `:`
 // TODO: Ask if "you really want to exit" on ^C when you have unsaved changes
+// TODO: load/save on a file removes all the comments from it
+// It would be nice to preserve them
