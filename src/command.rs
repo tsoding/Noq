@@ -106,7 +106,7 @@ pub enum Command {
     /// (a - a) + b {
     ///   ...
     /// ```
-    Load(Loc, String),
+    Load(Token),
     /// Save file
     ///
     /// ```noq
@@ -114,7 +114,7 @@ pub enum Command {
     ///
     /// save "session.noq" # <- the save command
     /// ```
-    Save(Loc, String),
+    Save(Token),
     /// List all the defined rules
     List,
     /// Show the full definition of the rule including its history
@@ -133,14 +133,14 @@ impl Command {
                 let token = lexer.expect_token(TokenKind::Str).map_err(|(expected_kind, actual_token)| {
                     diag.report(&actual_token.loc, Severity::Error, &format!("`load` command expects {expected_kind} as the file path, but got {actual_token} instead", actual_token = actual_token.report()));
                 }).ok()?;
-                Some(Self::Load(token.loc, token.text))
+                Some(Self::Load(token))
             },
             TokenKind::Save => {
                 lexer.next_token();
                 let token = lexer.expect_token(TokenKind::Str).map_err(|(expected_kind, actual_token)| {
                     diag.report(&actual_token.loc, Severity::Error, &format!("`save` command expects {expected_kind} as the file path, but got {actual_token} instead", actual_token = actual_token.report()));
                 }).ok()?;
-                Some(Self::Save(token.loc, token.text))
+                Some(Self::Save(token))
             }
             TokenKind::CloseCurly => {
                 let token = lexer.next_token();
@@ -373,7 +373,7 @@ impl Context {
         }
     }
 
-    fn save_history(&self, file_path: &str) -> Result<(), io::Error> {
+    fn save_rules_to_file(&self, file_path: &str) -> Result<(), io::Error> {
         let mut sink = fs::File::create(file_path)?;
         for (name, RuleDefinition{rule, history}) in self.rules.iter() {
             match rule {
@@ -411,15 +411,15 @@ impl Context {
         Ok(())
     }
 
-    fn process_file(&mut self, loc: Loc, file_path: String, diag: &mut impl Diagnoster) -> Option<()> {
-        let source = match fs::read_to_string(&file_path) {
+    fn process_file(&mut self, file_path: Token, diag: &mut impl Diagnoster) -> Option<()> {
+        let source = match fs::read_to_string(&file_path.text) {
             Ok(source) => source,
             Err(err) => {
-                diag.report(&loc, Severity::Error, &format!("could not load file {}: {}", file_path, err));
+                diag.report(&file_path.loc, Severity::Error, &format!("could not load file {}: {}", &file_path.text, err));
                 return None
             }
         };
-        let mut lexer = Lexer::new(source.chars().collect(), Some(file_path));
+        let mut lexer = Lexer::new(source.chars().collect(), Some(file_path.text));
         while lexer.peek_token().kind != TokenKind::End {
             self.process_command(Command::parse(&mut lexer, diag)?, diag)?
         }
@@ -428,10 +428,10 @@ impl Context {
 
     pub fn process_command(&mut self, command: Command, diag: &mut impl Diagnoster) -> Option<()> {
         match command.clone() {
-            Command::Load(loc, file_path) => {
+            Command::Load(file_path) => {
                 let saved_interactive = self.interactive;
                 self.interactive = false;
-                self.process_file(loc, file_path, diag)?;
+                self.process_file(file_path, diag)?;
                 self.interactive = saved_interactive;
             }
             Command::DefineRule{ name, rule } => {
@@ -612,9 +612,9 @@ impl Context {
                     return None
                 }
             }
-            Command::Save(loc, file_path) => {
-                if let Err(err) = self.save_history(&file_path) {
-                    diag.report(&loc, Severity::Error, &format!("could not save file {}: {}", file_path, err));
+            Command::Save(file_path) => {
+                if let Err(err) = self.save_rules_to_file(&file_path.text) {
+                    diag.report(&file_path.loc, Severity::Error, &format!("could not save file {}: {}", &file_path.text, err));
                     return None
                 }
             }
