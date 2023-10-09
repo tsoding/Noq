@@ -491,25 +491,26 @@ impl Context {
                         AppliedRule::Anonymous {head, body} => Rule::User {head, body},
                     };
 
-                    let previous_expr = frame.expr.clone();
-                    match Strategy::by_name(&strategy_name.text) {
-                        Some(Strategy::Match) => {
-                            let head = rule.head();
-                            let subexprs = find_all_subexprs(&head, &frame.expr);
-                            for (i, subexpr) in subexprs.iter().enumerate() {
-                                println!(" => {i}: {subexpr}", subexpr = HighlightedSubexpr{expr: &frame.expr, subexpr});
+                    if strategy_name.text == "match" {
+                        let head = rule.head();
+                        let subexprs = find_all_subexprs(&head, &frame.expr);
+                        for (i, subexpr) in subexprs.iter().enumerate() {
+                            println!(" => {i}: {subexpr}", subexpr = HighlightedSubexpr{expr: &frame.expr, subexpr});
+                        }
+                    } else {
+                        let previous_expr = frame.expr.clone();
+                        match Strategy::by_name(&strategy_name.text) {
+                            Some(strategy) => {
+                                rule.apply(&mut frame.expr, &strategy, &bar.loc, diag)?;
+                                println!(" => {}", &frame.expr);
+                                frame.history.push((previous_expr, command));
                             }
-                        },
-                        Some(strategy) => {
-                            rule.apply(&mut frame.expr, &strategy, &bar.loc, diag)?;
-                            println!(" => {}", &frame.expr);
-                            frame.history.push((previous_expr, command));
-                        }
-                        None => {
-                            diag.report(&bar.loc, Severity::Error, &format!("unknown rule application strategy '{}'", strategy_name.text));
-                            return None
-                        }
-                    };
+                            None => {
+                                diag.report(&bar.loc, Severity::Error, &format!("unknown rule application strategy '{}'", strategy_name.text));
+                                return None
+                            }
+                        };
+                    }
                 } else {
                     diag.report(&bar.loc, Severity::Error, &format!("To apply a rule to an expression you need to first start shaping the expression, but no shaping is currently in place"));
                     diag.report(&bar.loc, Severity::Info, &format!("<expression> {{    - to start shaping"));

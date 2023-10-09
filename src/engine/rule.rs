@@ -34,7 +34,6 @@ pub enum Strategy {
     All,
     Deep,
     Nth(usize),
-    Match,
 }
 
 impl Strategy {
@@ -43,7 +42,6 @@ impl Strategy {
             "all"   => Some(Self::All),
             "first" => Some(Self::Nth(0)),
             "deep"  => Some(Self::Deep),
-            "match" => Some(Self::Match),
             x       => x.parse().map(Self::Nth).ok()
         }
     }
@@ -77,8 +75,6 @@ impl Strategy {
                     state: State::Cont,
                 }
             },
-
-            Self::Match => unreachable!("TODO: Maybe Self::Match should not be a thing"),
         }
     }
 }
