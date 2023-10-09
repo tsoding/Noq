@@ -645,15 +645,25 @@ impl Context {
                     if reversed {
                         for (name, RuleDefinition{rule, ..}) in self.rules.iter() {
                             if let Some(rule) = rule.reverse() {
-                                if matches_at_least_one(&rule.head(), &frame.expr) {
-                                    println!(" ! {name}", name = name.text)
+                                let head = rule.head();
+                                if matches_at_least_one(&head, &frame.expr) {
+                                    if let Some(body) = rule.body() {
+                                        println!(" ! {name} :: {head} = {body}", name = name.text)
+                                    } else {
+                                        println!(" ! {name} :: {head} = [built-in]", name = name.text)
+                                    }
                                 }
                             }
                         }
                     } else {
                         for (name, RuleDefinition{rule, ..}) in self.rules.iter() {
+                            let head = rule.head();
                             if matches_at_least_one(&rule.head(), &frame.expr) {
-                                println!("   {name}", name = name.text)
+                                if let Some(body) = rule.body() {
+                                    println!("   {name} :: {head} = {body}", name = name.text)
+                                } else {
+                                    println!("   {name} :: {head} = [built-in]", name = name.text)
+                                }
                             }
                         }
                     }

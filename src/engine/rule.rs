@@ -90,6 +90,13 @@ impl Rule {
         }
     }
 
+    pub fn body(&self) -> Option<Expr> {
+        match self {
+            Rule::User{body, ..} => Some(body.clone()),
+            Rule::Replace => None,
+        }
+    }
+
     pub fn head(&self) -> Expr {
         match self {
             Rule::User{head, ..} => head.clone(),
