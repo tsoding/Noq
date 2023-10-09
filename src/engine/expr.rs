@@ -6,6 +6,37 @@ use super::diagnostics::*;
 
 pub type Bindings = HashMap<String, Expr>;
 
+macro_rules! fun_args {
+    () => { vec![] };
+    ($name:ident) => { vec![expr!($name)] };
+    ($name:ident,$($rest:tt)*) => {
+        {
+            let mut t = vec![expr!($name)];
+            t.append(&mut fun_args!($($rest)*));
+            t
+        }
+    };
+    ($name:ident($($args:tt)*)) => {
+        vec![expr!($name($($args)*))]
+    };
+    ($name:ident($($args:tt)*),$($rest:tt)*) => {
+        {
+            let mut t = vec![expr!($name($($args)*))];
+            t.append(&mut fun_args!($($rest)*));
+            t
+        }
+    }
+}
+
+macro_rules! expr {
+    ($name:ident) => {
+        Expr::make_ident(stringify!($name), loc_here!())
+    };
+    ($name:ident($($args:tt)*)) => {
+        Expr::Fun(Box::new(Expr::make_ident(stringify!($name), loc_here!())), fun_args!($($args)*))
+    };
+}
+
 // TODO: unary minus
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum Op {
@@ -68,6 +99,10 @@ pub enum Expr {
 }
 
 impl Expr {
+    pub fn replace_head() -> Expr {
+        expr!(apply_rule(Strategy, Head, Body, Expr))
+    }
+
     pub fn substitute(&mut self, bindings: &Bindings) {
         match self {
             Self::Sym(_) => {},
@@ -244,40 +279,6 @@ impl Expr {
     }
 }
 
-#[allow(unused_macros)]
-macro_rules! fun_args {
-    () => { vec![] };
-    ($name:ident) => { vec![expr!($name)] };
-    ($name:ident,$($rest:tt)*) => {
-        {
-            let mut t = vec![expr!($name)];
-            t.append(&mut fun_args!($($rest)*));
-            t
-        }
-    };
-    ($name:ident($($args:tt)*)) => {
-        vec![expr!($name($($args)*))]
-    };
-    ($name:ident($($args:tt)*),$($rest:tt)*) => {
-        {
-            let mut t = vec![expr!($name($($args)*))];
-            t.append(&mut fun_args!($($rest)*));
-            t
-        }
-    }
-}
-
-
-#[allow(unused_macros)]
-macro_rules! expr {
-    ($name:ident) => {
-        Expr::make_ident(stringify!($name), loc_here!())
-    };
-    ($name:ident($($args:tt)*)) => {
-        Expr::Fun(Box::new(Expr::make_ident(stringify!($name), loc_here!())), fun_args!($($args)*))
-    };
-}
-
 impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
@@ -319,6 +320,35 @@ impl fmt::Display for Expr {
             }
         }
     }
+}
+
+pub fn matches_at_least_one<'a>(pattern: &'a Expr, expr: &'a Expr) -> bool {
+    if pattern.pattern_match(expr).is_some() {
+        return true;
+    }
+
+    match expr {
+        Expr::Fun(head, args) => {
+            if matches_at_least_one(pattern, head) {
+                return true;
+            }
+            for arg in args {
+                if matches_at_least_one(pattern, arg) {
+                    return true;
+                }
+            }
+        }
+        Expr::Op(_, lhs, rhs) => {
+            if matches_at_least_one(pattern, lhs) {
+                return true;
+            }
+            if matches_at_least_one(pattern, rhs) {
+                return true;
+            }
+        }
+        Expr::Sym(_) | Expr::Var(_) => {},
+    }
+    false
 }
 
 pub fn find_all_subexprs<'a>(pattern: &'a Expr, expr: &'a Expr) -> Vec<&'a Expr> {

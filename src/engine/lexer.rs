@@ -1,4 +1,6 @@
 use std::fmt;
+use super::diagnostics::*;
+use std::fmt::Write;
 
 #[derive(Debug, Clone)]
 pub enum Loc {
@@ -37,6 +39,7 @@ pub enum TokenKind {
     List,
     Show,
     History,
+    Fit,
 
     // Special Characters
     OpenParen,
@@ -75,6 +78,7 @@ fn keyword_by_name(text: &str) -> Option<TokenKind> {
         "list"    => Some(TokenKind::List),
         "show"    => Some(TokenKind::Show),
         "history" => Some(TokenKind::History),
+        "fit"     => Some(TokenKind::Fit),
         _ => None,
     }
 }
@@ -93,6 +97,7 @@ impl fmt::Display for TokenKind {
             Delete => write!(f, "`delete`"),
             Load => write!(f, "`load`"),
             Save => write!(f, "`save`"),
+            Fit => write!(f, "`fit`"),
             OpenParen => write!(f, "open paren"),
             CloseParen => write!(f, "close paren"),
             OpenCurly => write!(f, "open curly"),
@@ -194,6 +199,28 @@ impl Lexer {
                 line: self.current_line(),
             },
         }
+    }
+
+    #[allow(dead_code)]
+    pub fn expect_tokens(&mut self, expected: &[TokenKind], diag: &mut impl Diagnoster) -> Option<Token> {
+        let token = self.next_token();
+        for kind in expected {
+            if *kind == token.kind {
+                return Some(token);
+            }
+        }
+        let mut expected_message = String::new();
+        for (i, kind) in expected.iter().enumerate() {
+            if i == 0 {
+                write!(&mut expected_message, "{kind}").unwrap();
+            } else if i + 1 == expected.len() {
+                write!(&mut expected_message, ", or {kind}").unwrap();
+            } else {
+                write!(&mut expected_message, ", {kind}").unwrap();
+            }
+        }
+        diag.report(&token.loc, Severity::Error, &format!("Expected {expected_message}, but got {actual}", actual = token.kind));
+        None
     }
 
     pub fn expect_token(&mut self, kind: TokenKind) -> Result<Token, (TokenKind, Token)> {

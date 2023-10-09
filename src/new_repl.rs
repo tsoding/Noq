@@ -118,7 +118,7 @@ impl NewCoolRepl {
     }
 }
 
-struct HighlightedSubexpr<'a> {
+pub struct HighlightedSubexpr<'a> {
     pub expr: &'a Expr,
     pub subexpr: &'a Expr
 }
@@ -126,7 +126,7 @@ struct HighlightedSubexpr<'a> {
 impl<'a> fmt::Display for HighlightedSubexpr<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let HighlightedSubexpr{expr, subexpr} = self;
-        if expr == subexpr {
+        if *expr as *const Expr == *subexpr as *const Expr {
             write!(f, "{}{}{}", color::Fg(color::Green), expr, color::Fg(color::Reset))
         } else {
             // TODO: get rid of duplicate code in fmt::Display instance of HighlightedSubexpr and Expr

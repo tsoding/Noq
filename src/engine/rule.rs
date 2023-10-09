@@ -34,6 +34,7 @@ pub enum Strategy {
     All,
     Deep,
     Nth(usize),
+    Match,
 }
 
 impl Strategy {
@@ -42,6 +43,7 @@ impl Strategy {
             "all"   => Some(Self::All),
             "first" => Some(Self::Nth(0)),
             "deep"  => Some(Self::Deep),
+            "match" => Some(Self::Match),
             x       => x.parse().map(Self::Nth).ok()
         }
     }
@@ -75,11 +77,30 @@ impl Strategy {
                     state: State::Cont,
                 }
             },
+
+            Self::Match => unreachable!("TODO: Maybe Self::Match should not be a thing"),
         }
     }
 }
 
 impl Rule {
+    pub fn reverse(&self) -> Option<Self> {
+        match self {
+            Rule::User{head, body} => Some(Rule::User {
+                head: body.clone(),
+                body: head.clone(),
+            }),
+            Rule::Replace => None
+        }
+    }
+
+    pub fn head(&self) -> Expr {
+        match self {
+            Rule::User{head, ..} => head.clone(),
+            Rule::Replace => Expr::replace_head(),
+        }
+    }
+
     pub fn apply(&self, expr: &mut Expr, strategy: &Strategy, apply_command_loc: &Loc, diag: &mut impl Diagnoster) -> Option<()> {
         fn apply_to_subexprs(rule: &Rule, expr: &mut Expr, strategy: &Strategy, apply_command_loc: &Loc, match_count: &mut usize, diag: &mut impl Diagnoster) -> Option<bool> {
             match expr {
@@ -128,7 +149,7 @@ impl Rule {
                 },
 
                 Rule::Replace => {
-                    if let Some(bindings) = expr!(apply_rule(Strategy, Head, Body, Expr)).pattern_match(expr) {
+                    if let Some(bindings) = Expr::replace_head().pattern_match(expr) {
                         *match_count += 1;
                         let meta_rule = Rule::User {
                             head: bindings.get("Head").expect("Variable `Head` is present in the meta pattern").clone(),

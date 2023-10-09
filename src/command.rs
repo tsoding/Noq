@@ -10,6 +10,7 @@ use super::engine::diagnostics::*;
 use super::engine::lexer::*;
 use super::engine::expr::*;
 use super::engine::rule::*;
+use super::new_repl::HighlightedSubexpr;
 
 #[derive(Clone)]
 pub enum AppliedRule {
@@ -121,6 +122,7 @@ pub enum Command {
     Show { name: Token },
     /// Show the history of the current shaping
     History { keyword: Token },
+    Fit { keyword: Token, reversed: bool },
 }
 
 impl Command {
@@ -141,6 +143,16 @@ impl Command {
                     diag.report(&actual_token.loc, Severity::Error, &format!("`save` command expects {expected_kind} as the file path, but got {actual_token} instead", actual_token = actual_token.report()));
                 }).ok()?;
                 Some(Self::Save(token))
+            }
+            TokenKind::Fit => {
+                let keyword = lexer.next_token();
+                let reversed = if lexer.peek_token().kind == TokenKind::Bang {
+                    lexer.next_token();
+                    true
+                } else {
+                    false
+                };
+                Some(Self::Fit{keyword, reversed})
             }
             TokenKind::CloseCurly => {
                 let token = lexer.next_token();
@@ -481,14 +493,23 @@ impl Context {
 
                     let previous_expr = frame.expr.clone();
                     match Strategy::by_name(&strategy_name.text) {
-                        Some(strategy) => rule.apply(&mut frame.expr, &strategy, &bar.loc, diag)?,
+                        Some(Strategy::Match) => {
+                            let head = rule.head();
+                            let subexprs = find_all_subexprs(&head, &frame.expr);
+                            for (i, subexpr) in subexprs.iter().enumerate() {
+                                println!(" => {i}: {subexpr}", subexpr = HighlightedSubexpr{expr: &frame.expr, subexpr});
+                            }
+                        },
+                        Some(strategy) => {
+                            rule.apply(&mut frame.expr, &strategy, &bar.loc, diag)?;
+                            println!(" => {}", &frame.expr);
+                            frame.history.push((previous_expr, command));
+                        }
                         None => {
                             diag.report(&bar.loc, Severity::Error, &format!("unknown rule application strategy '{}'", strategy_name.text));
                             return None
                         }
                     };
-                    println!(" => {}", &frame.expr);
-                    frame.history.push((previous_expr, command));
                 } else {
                     diag.report(&bar.loc, Severity::Error, &format!("To apply a rule to an expression you need to first start shaping the expression, but no shaping is currently in place"));
                     diag.report(&bar.loc, Severity::Info, &format!("<expression> {{    - to start shaping"));
@@ -616,6 +637,28 @@ impl Context {
                 if let Err(err) = self.save_rules_to_file(&file_path.text) {
                     diag.report(&file_path.loc, Severity::Error, &format!("could not save file {}: {}", &file_path.text, err));
                     return None
+                }
+            }
+            Command::Fit{keyword, reversed} => {
+                if let Some(frame) = self.shaping_stack.last() {
+                    if reversed {
+                        for (name, RuleDefinition{rule, ..}) in self.rules.iter() {
+                            if let Some(rule) = rule.reverse() {
+                                if matches_at_least_one(&rule.head(), &frame.expr) {
+                                    println!(" ! {name}", name = name.text)
+                                }
+                            }
+                        }
+                    } else {
+                        for (name, RuleDefinition{rule, ..}) in self.rules.iter() {
+                            if matches_at_least_one(&rule.head(), &frame.expr) {
+                                println!("   {name}", name = name.text)
+                            }
+                        }
+                    }
+                } else {
+                    diag.report(&keyword.loc, Severity::Error, "no shaping in place");
+                    return None;
                 }
             }
         }
