@@ -5,12 +5,72 @@
 use std::io::Write;
 use std::fs;
 use std::io;
+#[cfg(not(feature = "new_repl"))]
+use std::fmt;
 
 use super::engine::diagnostics::*;
 use super::engine::lexer::*;
 use super::engine::expr::*;
 use super::engine::rule::*;
+#[cfg(feature = "new_repl")]
 use super::new_repl::HighlightedSubexpr;
+
+#[cfg(not(feature = "new_repl"))]
+pub struct HighlightedSubexpr<'a> {
+    pub expr: &'a Expr,
+    pub subexpr: &'a Expr
+}
+
+#[cfg(not(feature = "new_repl"))]
+impl<'a> fmt::Display for HighlightedSubexpr<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let HighlightedSubexpr{expr, subexpr} = self;
+        if *expr as *const Expr == *subexpr as *const Expr {
+            write!(f, "[{expr}]")
+        } else {
+            // TODO: get rid of duplicate code in fmt::Display instance of HighlightedSubexpr and Expr
+            match expr {
+                Expr::Sym(name) | Expr::Var(name) => write!(f, "{}", name.text),
+                Expr::Fun(head, args) => {
+                    match &**head {
+                        Expr::Sym(name) | Expr::Var(name) => write!(f, "{}", name.text)?,
+                        other => write!(f, "({})", HighlightedSubexpr{expr: other, subexpr})?,
+                    }
+                    write!(f, "(")?;
+                    for (i, arg) in args.iter().enumerate() {
+                        if i > 0 { write!(f, ", ")? }
+                        write!(f, "{}", HighlightedSubexpr{expr: arg, subexpr})?;
+                    }
+                    write!(f, ")")
+                },
+                Expr::Op(op, lhs, rhs) => {
+                    match **lhs {
+                        Expr::Op(sub_op, _, _) => if sub_op.precedence() <= op.precedence() {
+                            write!(f, "({})", HighlightedSubexpr{expr: lhs, subexpr})?
+                        } else {
+                            write!(f, "{}", HighlightedSubexpr{expr: lhs, subexpr})?
+                        }
+                        _ => write!(f, "{}", HighlightedSubexpr{expr: lhs, subexpr})?
+                    }
+                    if op.precedence() <= 1 {
+                        write!(f, " {} ", op)?;
+                    } else {
+                        write!(f, "{}", op)?;
+                    }
+                    match **rhs {
+                        Expr::Op(sub_op, _, _) => if sub_op.precedence() <= op.precedence() {
+                            write!(f, "({})", HighlightedSubexpr{expr: rhs, subexpr})
+                        } else {
+                            write!(f, "{}", HighlightedSubexpr{expr: rhs, subexpr})
+                        }
+                        _ => write!(f, "{}", HighlightedSubexpr{expr: rhs, subexpr})
+                    }
+                }
+            }
+        }
+    }
+}
+
 
 #[derive(Clone)]
 pub enum AppliedRule {

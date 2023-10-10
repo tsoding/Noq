@@ -6,4 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-termion = "*"
+termion = { version = "*", optional = true }
+
+[features]
+new_repl = ["dep:termion"]

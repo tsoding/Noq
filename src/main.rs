@@ -5,6 +5,7 @@ use std::fs;
 
 #[macro_use]
 mod engine;
+#[cfg(feature = "new_repl")]
 mod new_repl;
 mod command;
 
@@ -107,6 +108,7 @@ fn start_repl() {
 
 enum ReplMode {
     Normal,
+    #[cfg(feature = "new_repl")]
     DebugNew,
     DebugParser,
     DebugLexer,
@@ -132,6 +134,7 @@ impl Config {
                         match mode_name.as_str() {
                             "parser" => config.mode = ReplMode::DebugParser,
                             "lexer" => config.mode = ReplMode::DebugLexer,
+                            #[cfg(feature = "new_repl")]
                             "new" => config.mode = ReplMode::DebugNew,
                             _ => {
                                 eprintln!("ERROR: unknown debug mode {}", mode_name);
@@ -166,6 +169,7 @@ fn main() {
         match config.mode {
             ReplMode::Normal => start_repl(),
             // TODO: new repl does not support Windows
+            #[cfg(feature = "new_repl")]
             ReplMode::DebugNew => new_repl::start(),
             ReplMode::DebugParser => start_parser_debugger(),
             ReplMode::DebugLexer => start_lexer_debugger(),
