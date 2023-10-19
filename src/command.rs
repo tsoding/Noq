@@ -372,9 +372,14 @@ impl Command {
     }
 }
 
+struct HistoryEntry {
+    previous_expr: Expr,
+    command: Command,
+}
+
 pub struct ShapingFrame {
     pub expr: Expr,
-    history: Vec<(Expr, Command)>,
+    history: Vec<HistoryEntry>,
     rule_via_shaping: Option<(Token, Expr)>,
 }
 
@@ -398,7 +403,7 @@ impl ShapingFrame {
 
 struct RuleDefinition {
     rule: Rule,
-    history: Vec<(Expr, Command)>,
+    history: Vec<HistoryEntry>,
 }
 
 pub struct Context {
@@ -453,7 +458,7 @@ impl Context {
                     write!(sink, "{name} :: {head}", name = name.text)?;
                     if history.len() > 0 {
                         writeln!(sink, " {{")?;
-                        for (_, command) in history {
+                        for HistoryEntry{command, ..} in history {
                             match command {
                                 Command::ApplyRule{strategy_name, applied_rule, ..} => {
                                     match applied_rule {
@@ -563,7 +568,7 @@ impl Context {
                             Some(strategy) => {
                                 rule.apply(&mut frame.expr, &strategy, &bar.loc, diag)?;
                                 println!(" => {}", &frame.expr);
-                                frame.history.push((previous_expr, command));
+                                frame.history.push(HistoryEntry{previous_expr, command});
                             }
                             None => {
                                 diag.report(&bar.loc, Severity::Error, &format!("unknown rule application strategy '{}'", strategy_name.text));
@@ -599,7 +604,7 @@ impl Context {
             }
             Command::UndoRule{keyword} => {
                 if let Some(frame) = self.shaping_stack.last_mut() {
-                    if let Some((previous_expr, _)) = frame.history.pop() {
+                    if let Some(HistoryEntry{previous_expr, ..}) = frame.history.pop() {
                         println!(" => {}", &previous_expr);
                         frame.expr = previous_expr;
                     } else {
@@ -623,7 +628,7 @@ impl Context {
             }
             Command::History{keyword} => {
                 if let Some(frame) = self.shaping_stack.last() {
-                    for (_, command) in frame.history.iter() {
+                    for HistoryEntry{command, ..} in frame.history.iter() {
                         match command {
                             Command::ApplyRule{strategy_name, applied_rule, ..} => {
                                 match applied_rule {
@@ -653,7 +658,7 @@ impl Context {
                         print!("{name} :: {head}", name = name.text);
                         if history.len() > 0 {
                             println!(" {{");
-                            for (_, command) in history {
+                            for HistoryEntry{command, ..} in history {
                                 match command {
                                     Command::ApplyRule{strategy_name, applied_rule, ..} => {
                                         match applied_rule {
