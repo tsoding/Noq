@@ -158,7 +158,7 @@ pub enum Command {
     /// sum_comm :: A + B = B + A
     /// delete sum_comm # <- the delete command
     /// ```
-    DeleteRule(Loc, Token),
+    DeleteRule{keyword: Token, name: Token},
     /// Load file
     ///
     /// ```noq
@@ -246,7 +246,7 @@ impl Command {
                 let name = lexer.expect_token(TokenKind::Ident).map_err(|(expected_kind, actual_token)| {
                     diag.report(&actual_token.loc, Severity::Error, &format!("`delete` command expects {expected_kind} as an argument but got {actual_token} instead", actual_token = actual_token.report()));
                 }).ok()?;
-                Some(Command::DeleteRule(keyword.loc, name))
+                Some(Command::DeleteRule{keyword, name})
             }
             _ => {
                 let expr = Expr::parse(lexer, diag)?;
@@ -686,11 +686,11 @@ impl Context {
                     }
                 }
             }
-            Command::DeleteRule(loc, name) => {
+            Command::DeleteRule{keyword, name} => {
                 if delete_item_by_key(&mut self.rules, &name) {
-                    diag.report(&loc, Severity::Info, &format!("rule `{}` has been removed", name.text));
+                    diag.report(&keyword.loc, Severity::Info, &format!("rule `{}` has been removed", name.text));
                 } else {
-                    diag.report(&loc, Severity::Error, &format!("rule `{}` does not exist", name.text));
+                    diag.report(&keyword.loc, Severity::Error, &format!("rule `{}` does not exist", name.text));
                     return None
                 }
             }
