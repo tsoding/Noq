@@ -167,12 +167,12 @@ impl Rule {
                                     Some(false)
                                 }
                                 None => {
-                                    diag.report(&apply_command_loc, Severity::Error, &format!("unknown rule application strategy '{}'", meta_strategy_name.report()));
+                                    diag.report(apply_command_loc, Severity::Error, &format!("unknown rule application strategy '{}'", meta_strategy_name.report()));
                                     None
                                 }
                             }
                         } else {
-                            diag.report(&apply_command_loc, Severity::Error, &format!("strategy must be a symbol but got {} {}", meta_strategy.human_name(), &meta_strategy));
+                            diag.report(apply_command_loc, Severity::Error, &format!("strategy must be a symbol but got {} {}", meta_strategy.human_name(), &meta_strategy));
                             None
                         }
                     } else {
@@ -185,7 +185,7 @@ impl Rule {
         let mut match_count = 0;
         apply_impl(self, expr, strategy, apply_command_loc, &mut match_count, diag)?;
         if match_count == 0 {
-            diag.report(&apply_command_loc, Severity::Error, &format!("no match found"));
+            diag.report(apply_command_loc, Severity::Error, "no match found");
             return None
         }
         Some(())

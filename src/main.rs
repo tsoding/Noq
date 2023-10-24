@@ -66,7 +66,7 @@ fn parse_and_process_command(context: &mut Context, lexer: &mut Lexer, diag: &mu
 
 fn interpret_file(file_path: &str) -> Option<()> {
     let mut context = Context::new(false);
-    let source = fs::read_to_string(&file_path).unwrap();
+    let source = fs::read_to_string(file_path).unwrap();
     let mut lexer = Lexer::new(source.chars().collect(), Some(file_path.to_string()));
     let mut diag = StdoutDiagnoster{};
     while !context.quit && lexer.peek_token().kind != TokenKind::End {
