@@ -65,6 +65,13 @@ impl<'a> fmt::Display for HighlightedSubexpr<'a> {
                         }
                         _ => write!(f, "{}", HighlightedSubexpr{expr: rhs, subexpr})
                     }
+                },
+                Expr::UnOp(op, expr) => {
+                    write!(f, "{}", op)?;
+                    match **expr {
+                        Expr::Op(_, _, _) | Expr::UnOp(_, _) => write!(f, "({})", expr),
+                        _ => write!(f, "{}", expr)
+                    }
                 }
             }
         }

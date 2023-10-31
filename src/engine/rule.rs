@@ -104,6 +104,7 @@ impl Rule {
         }
     }
 
+    //TODO: support for applying rules that have unary minus signs in them
     pub fn apply(&self, expr: &mut Expr, strategy: &Strategy, apply_command_loc: &Loc, diag: &mut impl Diagnoster) -> Option<()> {
         fn apply_to_subexprs(rule: &Rule, expr: &mut Expr, strategy: &Strategy, apply_command_loc: &Loc, match_count: &mut usize, diag: &mut impl Diagnoster) -> Option<bool> {
             match expr {
@@ -114,6 +115,7 @@ impl Rule {
                     }
                     apply_impl(rule, rhs, strategy, apply_command_loc, match_count, diag)
                 }
+                Expr::UnOp(_, _) => todo!(),
                 Expr::Fun(head, args) => {
                     if apply_impl(rule, head, strategy, apply_command_loc, match_count, diag)? {
                         return Some(true);
