@@ -151,6 +151,7 @@ impl<'a> fmt::Display for HighlightedSubexpr<'a> {
                         } else {
                             write!(f, "{}", HighlightedSubexpr{expr: lhs, subexpr})?
                         }
+                        Expr::UnOp(_, _) => write!(f, "({})", HighlightedSubexpr{expr: lhs, subexpr})?,
                         _ => write!(f, "{}", HighlightedSubexpr{expr: lhs, subexpr})?
                     }
                     if op.precedence() <= 1 {
@@ -164,7 +165,17 @@ impl<'a> fmt::Display for HighlightedSubexpr<'a> {
                         } else {
                             write!(f, "{}", HighlightedSubexpr{expr: rhs, subexpr})
                         }
+                        Expr::UnOp(_, _) => write!(f, "({})", HighlightedSubexpr{expr: rhs, subexpr}),
                         _ => write!(f, "{}", HighlightedSubexpr{expr: rhs, subexpr})
+                    }
+                }
+                Expr::UnOp(un_op, un_op_expr) => {
+                    write!(f, "{}", un_op)?;
+                    match **un_op_expr {
+                        Expr::UnOp(_, _) | Expr::Op(_, _, _) => {
+                            write!(f, "({})", HighlightedSubexpr{expr: un_op_expr, subexpr}),
+                        }
+                        _ => write!(f, "{}", HighlightedSubexpr{expr: un_op_expr, subexpr})
                     }
                 }
             }

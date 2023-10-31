@@ -241,11 +241,11 @@ impl Expr {
             return Self::parse_primary(lexer, diag)
         }
 
-        if let Some(un_op_token) = UnOp::from_token_kind(lexer.peek_token().kind) {
+        if let Some(un_op) = UnOp::from_token_kind(lexer.peek_token().kind) {
             lexer.next_token();
 
             Some(Expr::UnOp(
-                un_op_token,
+                un_op,
                 Box::new(Self::parse_impl(lexer, current_precedence, diag)?)
             ))
         } else {
@@ -292,6 +292,9 @@ impl Expr {
                 }
                 (Op(op1, lhs1, rhs1), Op(op2, lhs2, rhs2)) => {
                     *op1 == *op2 && pattern_match_impl(lhs1, lhs2, bindings) && pattern_match_impl(rhs1, rhs2, bindings)
+                }
+                (UnOp(un_op1, un_op_expr1), UnOp(un_op2, un_op_expr2)) => {
+                    *un_op1 == *un_op2 && pattern_match_impl(un_op_expr1, un_op_expr2, bindings)
                 }
                 (Fun(name1, args1), Fun(name2, args2)) => {
                     if pattern_match_impl(name1, name2, bindings) && args1.len() == args2.len() {
