@@ -138,8 +138,8 @@ impl Expr {
                 rhs.substitute(bindings);
             },
 
-            Self::UnOp(_, expr) => {
-                expr.substitute(bindings);
+            Self::UnOp(_, un_op_expr) => {
+                un_op_expr.substitute(bindings);
             },
 
             Self::Fun(head, args) => {
@@ -236,41 +236,41 @@ impl Expr {
         Some(head)
     }
 
-    fn parse_impl(lexer: &mut Lexer, current_precedence: usize, diag: &mut impl Diagnoster) -> Option<Self> {
-        if current_precedence > Op::MAX_PRECEDENCE {
-            return Self::parse_primary(lexer, diag)
-        }
-
-        if let Some(un_op) = UnOp::from_token_kind(lexer.peek_token().kind) {
-            lexer.next_token();
-
-            Some(Expr::UnOp(
-                un_op,
-                Box::new(Self::parse_impl(lexer, current_precedence, diag)?)
-            ))
-        } else {
-            let mut result = Self::parse_impl(lexer, current_precedence + 1, diag)?;
-
-            while let Some(op) = Op::from_token_kind(lexer.peek_token().kind) {
-                if current_precedence != op.precedence() {
-                    break
-                }
-
-                lexer.next_token();
-
-                result = Expr::Op(
-                    op,
-                    Box::new(result),
-                    Box::new(Self::parse_impl(lexer, current_precedence, diag)?)
-                );
+    pub fn parse(lexer: &mut Lexer, diag: &mut impl Diagnoster) -> Option<Self> {
+        fn parse_impl(lexer: &mut Lexer, current_precedence: usize, diag: &mut impl Diagnoster) -> Option<Expr> {
+            if current_precedence > Op::MAX_PRECEDENCE {
+                return Expr::parse_primary(lexer, diag)
             }
 
-            Some(result)
-        }
-    }
+            if let Some(un_op) = UnOp::from_token_kind(lexer.peek_token().kind) {
+                lexer.next_token();
 
-    pub fn parse(lexer: &mut Lexer, diag: &mut impl Diagnoster) -> Option<Self> {
-        Self::parse_impl(lexer, 0, diag)
+                Some(Expr::UnOp(
+                    un_op,
+                    Box::new(parse_impl(lexer, current_precedence, diag)?)
+                ))
+            } else {
+                let mut result = parse_impl(lexer, current_precedence + 1, diag)?;
+
+                while let Some(op) = Op::from_token_kind(lexer.peek_token().kind) {
+                    if current_precedence != op.precedence() {
+                        break
+                    }
+
+                    lexer.next_token();
+
+                    result = Expr::Op(
+                        op,
+                        Box::new(result),
+                        Box::new(parse_impl(lexer, current_precedence, diag)?)
+                    );
+                }
+
+                Some(result)
+            }
+        }
+
+        parse_impl(lexer, 0, diag)
     }
 
     pub fn pattern_match(&self, value: &Expr) -> Option<Bindings> {
@@ -363,11 +363,11 @@ impl fmt::Display for Expr {
                     _ => write!(f, "{}", rhs)
                 }
             },
-            Expr::UnOp(un_op, expr) => {
+            Expr::UnOp(un_op, un_op_expr) => {
                 write!(f, "{}", un_op)?;
-                match **expr {
-                    Expr::UnOp(_, _) | Expr::Op(_, _, _) => write!(f, "({})", expr),
-                    _ => write!(f, "{}", expr)
+                match **un_op_expr {
+                    Expr::UnOp(_, _) | Expr::Op(_, _, _) => write!(f, "({})", un_op_expr),
+                    _ => write!(f, "{}", un_op_expr)
                 }
             }
         }
@@ -398,8 +398,8 @@ pub fn matches_at_least_one<'a>(pattern: &'a Expr, expr: &'a Expr) -> bool {
                 return true;
             }
         }
-        Expr::UnOp(_, expr) => {
-            if matches_at_least_one(pattern, expr) {
+        Expr::UnOp(_, un_op_expr) => {
+            if matches_at_least_one(pattern, un_op_expr) {
                 return true;
             }
         }
@@ -427,8 +427,8 @@ pub fn find_all_subexprs<'a>(pattern: &'a Expr, expr: &'a Expr) -> Vec<&'a Expr>
                 find_all_subexprs_impl(pattern, lhs, subexprs);
                 find_all_subexprs_impl(pattern, rhs, subexprs);
             }
-            Expr::UnOp(_, expr) => {
-                find_all_subexprs_impl(pattern, expr, subexprs);
+            Expr::UnOp(_, un_op_expr) => {
+                find_all_subexprs_impl(pattern, un_op_expr, subexprs);
             }
             Expr::Sym(_) | Expr::Var(_) => {}
         }

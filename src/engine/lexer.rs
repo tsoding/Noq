@@ -52,10 +52,10 @@ pub enum TokenKind {
     CloseCurly,
     Bar,
     Bang,
+    Dash,
 
     // Binary Operators
     Plus,
-    Dash,
     Asterisk,
     Slash,
     Caret,
