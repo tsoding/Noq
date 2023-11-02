@@ -108,14 +108,13 @@ impl Rule {
         fn apply_to_subexprs(rule: &Rule, expr: &mut Expr, strategy: &Strategy, apply_command_loc: &Loc, match_count: &mut usize, diag: &mut impl Diagnoster) -> Option<bool> {
             match expr {
                 Expr::Sym(_) | Expr::Var(_) => Some(false),
-                Expr::Op(_, lhs, rhs) => {
-                    if apply_impl(rule, lhs, strategy, apply_command_loc, match_count, diag)? {
-                        return Some(true)
+                Expr::Op(_, maybe_lhs, rhs) => {
+                    if let Some(lhs) = maybe_lhs {
+                        if apply_impl(rule, lhs, strategy, apply_command_loc, match_count, diag)? {
+                            return Some(true)
+                        }
                     }
                     apply_impl(rule, rhs, strategy, apply_command_loc, match_count, diag)
-                }
-                Expr::UnOp(_, un_op_expr) => {
-                    apply_impl(rule, un_op_expr, strategy, apply_command_loc, match_count, diag)
                 }
                 Expr::Fun(head, args) => {
                     if apply_impl(rule, head, strategy, apply_command_loc, match_count, diag)? {
