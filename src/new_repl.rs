@@ -144,13 +144,14 @@ impl<'a> fmt::Display for HighlightedSubexpr<'a> {
                     }
                     write!(f, ")")
                 },
-                Expr::Op(op, lhs, rhs) => {
+                Expr::Op(op, Some(lhs), rhs) => {
                     match **lhs {
-                        Expr::Op(sub_op, _, _) => if sub_op.precedence() <= op.precedence() {
+                        Expr::Op(sub_op, Some(_), _) => if sub_op.precedence() <= op.precedence() {
                             write!(f, "({})", HighlightedSubexpr{expr: lhs, subexpr})?
                         } else {
                             write!(f, "{}", HighlightedSubexpr{expr: lhs, subexpr})?
                         }
+                        Expr::Op(_, None, _) => write!(f, "{}", HighlightedSubexpr{expr: lhs, subexpr})?,
                         _ => write!(f, "{}", HighlightedSubexpr{expr: lhs, subexpr})?
                     }
                     if op.precedence() <= 1 {
@@ -159,11 +160,19 @@ impl<'a> fmt::Display for HighlightedSubexpr<'a> {
                         write!(f, "{}", op)?;
                     }
                     match **rhs {
-                        Expr::Op(sub_op, _, _) => if sub_op.precedence() <= op.precedence() {
+                        Expr::Op(sub_op, Some(_), _) => if sub_op.precedence() <= op.precedence() {
                             write!(f, "({})", HighlightedSubexpr{expr: rhs, subexpr})
                         } else {
                             write!(f, "{}", HighlightedSubexpr{expr: rhs, subexpr})
                         }
+                        Expr::Op(_, None, _) => write!(f, "{}", HighlightedSubexpr{expr: rhs, subexpr}),
+                        _ => write!(f, "{}", HighlightedSubexpr{expr: rhs, subexpr})
+                    }
+                },
+                Expr::Op(op, None, rhs) => {
+                    write!(f, "{}", op)?;
+                    match **rhs {
+                        Expr::Op(_, _, _) => write!(f, "({})", HighlightedSubexpr{expr: rhs, subexpr}),
                         _ => write!(f, "{}", HighlightedSubexpr{expr: rhs, subexpr})
                     }
                 }

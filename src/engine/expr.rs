@@ -37,7 +37,6 @@ macro_rules! expr {
     };
 }
 
-// TODO: unary minus
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum Op {
     Add,
@@ -47,10 +46,11 @@ pub enum Op {
     Pow,
     Mod,
     Eql,
+    Neg,
 }
 
 impl Op {
-    fn from_token_kind(kind: TokenKind) -> Option<Self> {
+    fn binary_op_from_token_kind(kind: TokenKind) -> Option<Self> {
         match kind {
             TokenKind::Plus => Some(Op::Add),
             TokenKind::Dash => Some(Op::Sub),
@@ -63,17 +63,25 @@ impl Op {
         }
     }
 
+    fn unary_op_from_token_kind(kind: TokenKind) -> Option<Self> {
+        match kind {
+            TokenKind::Dash => Some(Op::Neg),
+            _ => None
+        }
+    }
+
     pub fn precedence(&self) -> usize {
         use Op::*;
         match self {
             Eql             => 0,
             Add | Sub       => 1,
             Mul | Div | Mod => 2,
-            Pow             => 3,
+            Neg             => 3,
+            Pow             => 4,
         }
     }
 
-    const MAX_PRECEDENCE: usize = 3;
+    const MAX_PRECEDENCE: usize = 4;
 }
 
 impl fmt::Display for Op {
@@ -86,16 +94,16 @@ impl fmt::Display for Op {
             Op::Div => write!(f, "/"),
             Op::Mod => write!(f, "%"),
             Op::Pow => write!(f, "^"),
+            Op::Neg => write!(f, "-"),
         }
     }
 }
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
     Sym(Token),
     Var(Token),
     Fun(Box<Expr>, Vec<Expr>),
-    Op(Op, Box<Expr>, Box<Expr>),
+    Op(Op, Option<Box<Expr>>, Box<Expr>),
 }
 
 impl Expr {
@@ -111,8 +119,10 @@ impl Expr {
                 *self = value.clone()
             }
 
-            Self::Op(_, lhs, rhs) => {
-                lhs.substitute(bindings);
+            Self::Op(_, maybe_lhs, rhs) => {
+                if let Some(lhs) = maybe_lhs {
+                    lhs.substitute(bindings);
+                }
                 rhs.substitute(bindings);
             },
 
@@ -149,7 +159,8 @@ impl Expr {
             Self::Sym(_) => "a symbol",
             Self::Var(_) => "a variable",
             Self::Fun(_, _) => "a functor",
-            Self::Op(_, _, _) => "a binary operator",
+            Self::Op(_, Some(_), _) => "a binary operator",
+            Self::Op(_, None, _) => "a unary operator",
         }
     }
 
@@ -192,6 +203,10 @@ impl Expr {
                     Self::parse_ident(token)
                 },
 
+                TokenKind::Dash => {
+                    Self::parse(lexer, diag)?
+                },
+
                 _ => {
                     diag.report(&token.loc, Severity::Error, &format!("Expected start of a primary expression. Primary expressions start with {} or {}.", TokenKind::Ident, TokenKind::OpenParen));
                     return None;
@@ -205,32 +220,61 @@ impl Expr {
         Some(head)
     }
 
-    fn parse_binary_operator(lexer: &mut Lexer, current_precedence: usize, diag: &mut impl Diagnoster) -> Option<Self> {
-        if current_precedence > Op::MAX_PRECEDENCE {
-            return Self::parse_primary(lexer, diag)
-        }
-
-        let mut result = Self::parse_binary_operator(lexer, current_precedence + 1, diag)?;
-
-        while let Some(op) = Op::from_token_kind(lexer.peek_token().kind) {
-            if current_precedence != op.precedence() {
-                break
+    pub fn parse(lexer: &mut Lexer, diag: &mut impl Diagnoster) -> Option<Self> {
+        fn parse_impl(lexer: &mut Lexer, current_precedence: usize, diag: &mut impl Diagnoster) -> Option<Expr> {
+            if current_precedence > Op::MAX_PRECEDENCE {
+                return Expr::parse_primary(lexer, diag)
             }
 
-            lexer.next_token();
+            if let Some(un_op) = Op::unary_op_from_token_kind(lexer.peek_token().kind) {
+                lexer.next_token();
 
-            result = Expr::Op(
-                op,
-                Box::new(result),
-                Box::new(Self::parse_binary_operator(lexer, current_precedence, diag)?)
-            );
+                let token_after_un_op_is_open_paren = lexer.peek_token().kind == TokenKind::OpenParen;
+                let sub_expr = parse_impl(lexer, current_precedence, diag)?;
+
+                if !token_after_un_op_is_open_paren {
+                    if let Expr::Op(op, Some(lhs), rhs) = &sub_expr {
+                        if op.precedence() < un_op.precedence() {
+                            return Some(Expr::Op(
+                                *op,
+                                Some(Box::new(Expr::Op(
+                                    un_op,
+                                    None,
+                                    lhs.clone()
+                                ))),
+                                rhs.clone()
+                            ))
+                        }
+                    }
+                }
+
+                Some(Expr::Op(
+                    un_op,
+                    None,
+                    Box::new(sub_expr)
+                ))
+            } else {
+                let mut result = parse_impl(lexer, current_precedence + 1, diag)?;
+
+                while let Some(op) = Op::binary_op_from_token_kind(lexer.peek_token().kind) {
+                    if current_precedence != op.precedence() {
+                        break
+                    }
+
+                    lexer.next_token();
+
+                    result = Expr::Op(
+                        op,
+                        Some(Box::new(result)),
+                        Box::new(parse_impl(lexer, current_precedence, diag)?)
+                    );
+                }
+
+                Some(result)
+            }
         }
 
-        Some(result)
-    }
-
-    pub fn parse(lexer: &mut Lexer, diag: &mut impl Diagnoster) -> Option<Self> {
-        Self::parse_binary_operator(lexer, 0, diag)
+        parse_impl(lexer, 0, diag)
     }
 
     pub fn pattern_match(&self, value: &Expr) -> Option<Bindings> {
@@ -250,8 +294,16 @@ impl Expr {
                         true
                     }
                 }
-                (Op(op1, lhs1, rhs1), Op(op2, lhs2, rhs2)) => {
-                    *op1 == *op2 && pattern_match_impl(lhs1, lhs2, bindings) && pattern_match_impl(rhs1, rhs2, bindings)
+                (Op(op1, maybe_lhs1, rhs1), Op(op2, maybe_lhs2, rhs2)) => {
+                    if *op1 != *op2 || !pattern_match_impl(rhs1, rhs2, bindings) {
+                        false
+                    } else {
+                        match (maybe_lhs1, maybe_lhs2) {
+                            (Some(lhs1), Some(lhs2)) => pattern_match_impl(lhs1, lhs2, bindings),
+                            (None, None) => true,
+                            _ => false
+                        }
+                    }
                 }
                 (Fun(name1, args1), Fun(name2, args2)) => {
                     if pattern_match_impl(name1, name2, bindings) && args1.len() == args2.len() {
@@ -295,13 +347,14 @@ impl fmt::Display for Expr {
                 }
                 write!(f, ")")
             },
-            Expr::Op(op, lhs, rhs) => {
+            Expr::Op(op, Some(lhs), rhs) => {
                 match **lhs {
-                    Expr::Op(sub_op, _, _) => if sub_op.precedence() <= op.precedence() {
+                    Expr::Op(sub_op, Some(_), _) => if sub_op.precedence() <= op.precedence() {
                         write!(f, "({})", lhs)?
                     } else {
                         write!(f, "{}", lhs)?
                     }
+                    Expr::Op(_, None, _) => write!(f, "{}", lhs)?,
                     _ => write!(f, "{}", lhs)?
                 }
                 if op.precedence() <= 1 {
@@ -310,11 +363,19 @@ impl fmt::Display for Expr {
                     write!(f, "{}", op)?;
                 }
                 match **rhs {
-                    Expr::Op(sub_op, _, _) => if sub_op.precedence() <= op.precedence() {
+                    Expr::Op(sub_op, Some(_), _) => if sub_op.precedence() <= op.precedence() {
                         write!(f, "({})", rhs)
                     } else {
                         write!(f, "{}", rhs)
                     }
+                    Expr::Op(_, None, _) => write!(f, "{}", rhs),
+                    _ => write!(f, "{}", rhs)
+                }
+            },
+            Expr::Op(op, None, rhs) => {
+                write!(f, "{}", op)?;
+                match **rhs {
+                    Expr::Op(_, _, _) => write!(f, "({})", rhs),
                     _ => write!(f, "{}", rhs)
                 }
             }
@@ -338,9 +399,11 @@ pub fn matches_at_least_one<'a>(pattern: &'a Expr, expr: &'a Expr) -> bool {
                 }
             }
         }
-        Expr::Op(_, lhs, rhs) => {
-            if matches_at_least_one(pattern, lhs) {
-                return true;
+        Expr::Op(_, maybe_lhs, rhs) => {
+            if let Some(lhs) = maybe_lhs {
+                if matches_at_least_one(pattern, lhs) {
+                    return true;
+                }
             }
             if matches_at_least_one(pattern, rhs) {
                 return true;
@@ -366,8 +429,10 @@ pub fn find_all_subexprs<'a>(pattern: &'a Expr, expr: &'a Expr) -> Vec<&'a Expr>
                     find_all_subexprs_impl(pattern, arg, subexprs);
                 }
             }
-            Expr::Op(_, lhs, rhs) => {
-                find_all_subexprs_impl(pattern, lhs, subexprs);
+            Expr::Op(_, maybe_lhs, rhs) => {
+                if let Some(lhs) = maybe_lhs {
+                    find_all_subexprs_impl(pattern, lhs, subexprs);
+                }
                 find_all_subexprs_impl(pattern, rhs, subexprs);
             }
             Expr::Sym(_) | Expr::Var(_) => {}
